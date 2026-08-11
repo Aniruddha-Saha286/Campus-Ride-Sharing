@@ -2,7 +2,7 @@ import axios from "axios";
 
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 
-const client = axios.create({ baseURL: API_BASE });
+export const client = axios.create({ baseURL: API_BASE });
 
 client.interceptors.request.use((config) => {
   const token = localStorage.getItem("token");
@@ -13,15 +13,14 @@ client.interceptors.request.use((config) => {
 client.interceptors.response.use(
   (response) => response,
   (error) => {
-    // 403 on an authenticated student request means the account was banned.
     if (error.response?.status === 403 && error.config?.headers?.Authorization) {
-      localStorage.setItem(
-        "bannedReason",
-        error.response?.data?.message || "Your account has been banned",
-      );
-      localStorage.removeItem("token");
-      if (window.location.pathname !== "/banned") {
-        window.location.href = "/banned";
+      const msg = error.response?.data?.message || "";
+      if (msg.toLowerCase().includes("banned")) {
+        localStorage.setItem("bannedReason", msg || "Your account has been banned");
+        localStorage.removeItem("token");
+        if (window.location.pathname !== "/banned") {
+          window.location.href = "/banned";
+        }
       }
     }
     return Promise.reject(error);
@@ -82,6 +81,8 @@ export const getVerifications = (status = "pending") =>
 
 export const getUsers = (search = "") =>
   adminClient.get("/admin/users", { params: { search } });
+
+export const getAdminStats = () => adminClient.get("/admin/stats");
 
 export const banUser = (id, reason) =>
   adminClient.put(`/admin/users/${id}/ban`, { reason });

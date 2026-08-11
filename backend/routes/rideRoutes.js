@@ -1,0 +1,23 @@
+const express = require("express");
+const router = express.Router();
+const protect = require("../middleware/auth");
+const idVerified = require("../middleware/idVerified");
+const {
+  createRide,
+  listRides,
+  getMyRides,
+  requestSeat,
+  respondToRequest,
+  cancelRequest,
+  cancelRide,
+} = require("../controllers/rideController");
+
+router.get("/", protect, idVerified, listRides);
+router.get("/mine", protect, idVerified, getMyRides);
+router.post("/", protect, idVerified, createRide);
+router.post("/:rideId/requests", protect, idVerified, requestSeat);
+router.put("/:rideId/requests/:requestId", protect, idVerified, respondToRequest);
+router.delete("/:rideId/requests/:requestId", protect, idVerified, cancelRequest);
+router.delete("/:rideId", protect, idVerified, cancelRide);
+
+module.exports = router;

@@ -28,7 +28,7 @@ import {
   deleteAccount,
 } from "../api/api";
 import { useAuth } from "../auth";
-import { FieldError, Section, TextInput, DateInput, SelectInput } from "./fields.jsx";
+import { FieldError, Section, TextInput, DateInput, SelectInput } from "./Fields.jsx";
 
 const YEAR_OPTIONS = ["1st Year", "2nd Year", "3rd Year", "4th Year", "5th Year", "Graduate"];
 const RELATION_OPTIONS = ["Parent", "Guardian", "Sibling", "Relative", "Friend", "Other"];
@@ -214,12 +214,18 @@ export default function ProfileSetup() {
     }
     setErrors((prev) => ({ ...prev, photo: null }));
     setPhotoFile(file);
-    setPhotoPreview(URL.createObjectURL(file));
+    setPhotoPreview((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return URL.createObjectURL(file);
+    });
   };
 
   const clearPhoto = async () => {
+    setPhotoPreview((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return null;
+    });
     setPhotoFile(null);
-    setPhotoPreview(null);
     if (existingPhotoUrl) {
       try {
         await deleteProfilePhoto();
@@ -244,12 +250,18 @@ export default function ProfileSetup() {
     }
     setErrors((prev) => ({ ...prev, idCard: null }));
     setIdCardFile(file);
-    setIdCardPreview(URL.createObjectURL(file));
+    setIdCardPreview((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return URL.createObjectURL(file);
+    });
   };
 
   const clearIdCard = () => {
+    setIdCardPreview((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return null;
+    });
     setIdCardFile(null);
-    setIdCardPreview(null);
     if (idCardInputRef.current) idCardInputRef.current.value = "";
   };
 

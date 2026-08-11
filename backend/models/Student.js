@@ -56,7 +56,7 @@ const studentSchema = new mongoose.Schema(
     phone: { type: String, required: true, match: [PHONE_REGEX, "Enter a valid Bangladeshi mobile number"] },
     emergencyContact: { type: emergencyContactSchema, required: true },
     dateOfBirth: { type: Date, required: true },
-    studentNid: { type: String, default: null, trim: true, match: [NID_REGEX, "Student NID must be 17 digits"],required: true},
+    studentNid: { type: String, default: null, trim: true, match: [NID_REGEX, "Student NID must be 17 digits"] },
     passport: {
       type: String,
       default: null,

@@ -102,7 +102,7 @@ const parseProfileBody = (req, res, next) => {
     }
     next();
   } catch (err) {
-    if (req.file) deleteUploadedFile(`uploads/id-cards/${req.file.filename}`);
+    if (req.file) deleteUploadedFile(req.file.path);
     return res.status(400).json({ success: false, message: "Invalid profile data" });
   }
 };
@@ -110,7 +110,7 @@ const parseProfileBody = (req, res, next) => {
 const handleValidation = (req, res, next) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
-    if (req.file) deleteUploadedFile(`uploads/id-cards/${req.file.filename}`);
+    if (req.file) deleteUploadedFile(req.file.path);
     return res.status(400).json({ success: false, errors: errors.array() });
   }
   next();

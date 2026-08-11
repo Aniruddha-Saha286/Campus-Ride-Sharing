@@ -5,11 +5,13 @@ import {
   Navigate,
   Link,
   Outlet,
+  useLocation,
 } from "react-router-dom";
 import { GoogleOAuthProvider } from "@react-oauth/google";
 import Login from "./components/Login.jsx";
 import ProfileSetup from "./components/ProfileSetup.jsx";
 import Dashboard from "./components/Dashboard.jsx";
+import NewRide from "./components/NewRide.jsx";
 import AdminLogin from "./components/AdminLogin.jsx";
 import AdminDashboard from "./components/AdminDashboard.jsx";
 import Banned from "./components/Banned.jsx";
@@ -18,11 +20,20 @@ import { AuthContext } from "./auth.js";
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || "";
 
 function Header() {
+  const { token } = React.useContext(AuthContext);
+  const location = useLocation();
+  const logoTo = location.pathname.startsWith("/admin")
+    ? "/admin"
+    : token
+      ? "/dashboard"
+      : "/";
+  const isLogoTarget = location.pathname === logoTo;
   return (
     <header className="border-b border-slate-100 bg-white">
       <div className="flex w-full items-center gap-2 px-6 py-4 lg:px-10">
         <Link
-          to="/dashboard"
+          to={logoTo}
+          reloadDocument={isLogoTarget}
           className="flex items-center gap-2 rounded-lg transition hover:opacity-80"
         >
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-600 text-sm font-bold text-white">
@@ -92,6 +103,14 @@ const router = createBrowserRouter([
         element: (
           <RequireAuth>
             <Dashboard />
+          </RequireAuth>
+        ),
+      },
+      {
+        path: "/rides/new",
+        element: (
+          <RequireAuth>
+            <NewRide />
           </RequireAuth>
         ),
       },

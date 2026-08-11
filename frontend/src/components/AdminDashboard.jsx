@@ -25,13 +25,11 @@ import {
   getVerifications,
   reviewVerification,
   getUsers,
+  getAdminStats,
   banUser,
   unbanUser,
 } from "../api/api";
 
-const API_ORIGIN = new URL(
-  import.meta.env.VITE_API_URL || "http://localhost:5000/api",
-).origin;
 
 const STATUS_META = {
   none: { label: "Not submitted", classes: "bg-slate-100 text-slate-600", Icon: ShieldCheck },
@@ -81,6 +79,7 @@ export default function AdminDashboard() {
   const [actionTarget, setActionTarget] = useState(null);
   const [banReason, setBanReason] = useState("");
   const [actionBusy, setActionBusy] = useState(false);
+  const [stats, setStats] = useState(null);
 
   const handleLogout = () => {
     localStorage.removeItem("adminToken");
@@ -103,6 +102,22 @@ export default function AdminDashboard() {
       setUsersLoading(false);
     }
   };
+
+  const loadStats = async () => {
+    try {
+      const { data } = await getAdminStats();
+      setStats(data.data);
+    } catch (err) {
+      if (err.response?.status === 401 || err.response?.status === 403) {
+        handleLogout();
+      }
+    }
+  };
+
+  useEffect(() => {
+    loadStats();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const load = async (status) => {
     setLoading(true);
@@ -223,6 +238,26 @@ export default function AdminDashboard() {
           {tabButton("users", "Users", <Users size={15} />)}
         </div>
 
+        <div className="mb-6 flex flex-wrap gap-4">
+          <div className="flex flex-1 min-w-[200px] items-center justify-between gap-4 rounded-2xl border border-slate-100 bg-white p-5 shadow-card">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Registered students
+              </p>
+              <p className="mt-1 text-3xl font-extrabold text-slate-900">
+                {stats === null ? (
+                  <Loader2 className="animate-spin text-slate-300" size={22} />
+                ) : (
+                  stats.registeredStudents
+                )}
+              </p>
+            </div>
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-brand-50 text-brand-600">
+              <Users size={22} />
+            </div>
+          </div>
+        </div>
+
         {tab === "verifications" ? (
           <>
             <div className="mb-4 flex gap-2">
@@ -285,7 +320,7 @@ export default function AdminDashboard() {
                     >
                       <div className="flex items-center gap-4">
                         <img
-                          src={`${API_ORIGIN}/${student.studentIdCard}`}
+                          src={student.studentIdCard}
                           alt="ID card"
                           className="h-16 w-28 rounded-lg border border-slate-200 object-cover"
                         />
@@ -381,7 +416,7 @@ export default function AdminDashboard() {
                         <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full border border-slate-200 bg-slate-50">
                           {student.profilePhoto ? (
                             <img
-                              src={`${API_ORIGIN}/${student.profilePhoto}`}
+                              src={student.profilePhoto}
                               alt="Profile"
                               className="h-full w-full object-cover"
                             />
@@ -470,7 +505,7 @@ export default function AdminDashboard() {
 
             <div className="px-6 py-5">
               <img
-                src={`${API_ORIGIN}/${selected.studentIdCard}`}
+                src={selected.studentIdCard}
                 alt="University ID card"
                 className="mx-auto max-h-72 rounded-xl border border-slate-200 object-contain"
               />
@@ -597,7 +632,7 @@ export default function AdminDashboard() {
                 <div className="flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
                   {selectedUser.profilePhoto ? (
                     <img
-                      src={`${API_ORIGIN}/${selectedUser.profilePhoto}`}
+                      src={selectedUser.profilePhoto}
                       alt="Profile"
                       className="h-full w-full object-cover"
                     />
@@ -607,7 +642,7 @@ export default function AdminDashboard() {
                 </div>
                 {selectedUser.studentIdCard && (
                   <img
-                    src={`${API_ORIGIN}/${selectedUser.studentIdCard}`}
+                    src={selectedUser.studentIdCard}
                     alt="University ID card"
                     className="h-24 w-40 rounded-xl border border-slate-200 object-cover"
                   />

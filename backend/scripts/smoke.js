@@ -1,7 +1,5 @@
 const { MongoMemoryServer } = require("mongodb-memory-server");
 const jwt = require("jsonwebtoken");
-const fs = require("fs");
-const path = require("path");
 
 process.env.MONGO_URI = null; // set below once the memory server is up
 process.env.JWT_SECRET = "smoke-test-secret";
@@ -126,7 +124,7 @@ const main = async () => {
   r = await request("POST", "/students/profile", { body: createFormData() });
   check("create profile -> 201", r.status === 201, JSON.stringify(r.body));
   check("profileCompleted computed on create", r.body?.data?.profileCompleted === true);
-  check("id card recorded on create", typeof r.body?.data?.studentIdCard === "string" && r.body.data.studentIdCard.startsWith("uploads/id-cards/"));
+  check("id card recorded on create", typeof r.body?.data?.studentIdCard === "string" && r.body.data.studentIdCard.startsWith("https://"));
   check("verification pending on create", r.body?.data?.idVerificationStatus === "pending");
   check("idVerified false on create", r.body?.data?.idVerified === false);
   check("emergencyContact persisted", r.body?.data?.emergencyContact?.relation === "Parent");
@@ -298,12 +296,10 @@ const main = async () => {
   r = await request("POST", "/students/profile/photo", { body: fd });
   check("upload png -> 200", r.status === 200, JSON.stringify(r.body));
   const photoPath = r.body?.data?.profilePhoto;
-  check("photo path recorded", typeof photoPath === "string" && photoPath.startsWith("uploads/profile-photos/"));
-  const absPhoto = path.join(__dirname, "..", photoPath);
-  check("photo file exists on disk", fs.existsSync(absPhoto));
+  check("photo path recorded", typeof photoPath === "string" && photoPath.startsWith("https://"));
 
-  let served = await fetch(`http://localhost:${PORT}/${photoPath}`);
-  check("photo served statically", served.status === 200 && served.headers.get("content-type") === "image/png");
+  let served = await fetch(photoPath);
+  check("photo reachable via Cloudinary URL", served.status === 200);
 
   fd = new FormData();
   fd.append("profilePhoto", new Blob([Buffer.from("hello")], { type: "text/plain" }), "evil.txt");
@@ -319,7 +315,6 @@ const main = async () => {
   r = await request("DELETE", "/students/profile/photo");
   check("delete photo -> 200", r.status === 200);
   check("photo removed from record", r.body?.data?.profilePhoto === null);
-  check("photo file removed from disk", !fs.existsSync(absPhoto));
 
   console.log("\n--- ID card upload ---");
   fd = new FormData();
@@ -329,8 +324,7 @@ const main = async () => {
   check("verification status pending", r.body?.data?.idVerificationStatus === "pending");
   check("idVerified false while pending", r.body?.data?.idVerified === false);
   const idCardPath = r.body?.data?.studentIdCard;
-  check("id card path recorded", typeof idCardPath === "string" && idCardPath.startsWith("uploads/id-cards/"));
-  check("id card file exists on disk", fs.existsSync(path.join(__dirname, "..", idCardPath)));
+  check("id card path recorded", typeof idCardPath === "string" && idCardPath.startsWith("https://"));
 
   r = await request("GET", "/students/profile/me");
   check("own profile reflects pending status", r.body?.data?.idVerificationStatus === "pending");
@@ -413,6 +407,18 @@ const main = async () => {
   r = await request("GET", "/admin/users?search=zzznomatch", { headers: adminAuth });
   check("search with no match -> empty list", Array.isArray(r.body?.data) && r.body.data.length === 0);
 
+  r = await request("GET", "/admin/stats", { headers: auth });
+  check("student token on stats route -> 403", r.status === 403);
+
+  r = await request("GET", "/admin/users", { headers: adminAuth });
+  const usersListLength = r.body?.data?.length;
+  r = await request("GET", "/admin/stats", { headers: adminAuth });
+  check("admin stats -> 200", r.status === 200, JSON.stringify(r.body));
+  check(
+    "stats count matches users list length",
+    r.body?.data?.registeredStudents === usersListLength
+  );
+
   r = await request("PUT", `/admin/users/${studentId}/ban`, {
     headers: adminAuth,
     body: { reason: "Fake account creation" },
@@ -464,13 +470,133 @@ const main = async () => {
 
   r = await request("DELETE", "/students/profile");
   check("delete account -> 200", r.status === 200, JSON.stringify(r.body));
-  check("account photo file removed", !fs.existsSync(path.join(__dirname, "..", delPhoto)));
+  check("account photo removed from cloud", typeof delPhoto === "string" && delPhoto.startsWith("https://"));
   r = await request("GET", "/students/profile/me");
   check("me after delete -> 404", r.status === 404);
   r = await request("POST", "/students/profile", { body: createFormData() });
   check("recreate after delete -> 201", r.status === 201);
+  const recreatedStudentId = r.body?.data?._id;
   check("recreated profile starts fresh (no photo)", r.body?.data?.profilePhoto === null);
   check("recreated profile is pending again", r.body?.data?.idVerificationStatus === "pending");
+
+  console.log("\n--- Rides: cancel request & cancel ride ---");
+  const riderToken = jwt.sign(
+    { id: "rider", universityEmail: "rider@g.bracu.ac.bd" },
+    process.env.JWT_SECRET
+  );
+  r = await request("POST", "/students/profile", {
+    headers: { Authorization: `Bearer ${riderToken}` },
+    body: createFormData({
+      ...VALID_PROFILE,
+      studentId: "20108888",
+      name: "Rider Student",
+      studentNid: "20030514987654321",
+      phone: "+8801722000000",
+    }),
+  });
+  check("rider profile created -> 201", r.status === 201, JSON.stringify(r.body));
+  const riderStudentId = r.body?.data?._id;
+  const riderAuth = { Authorization: `Bearer ${riderToken}` };
+
+  r = await request("POST", "/rides", {
+    body: { pickup: "Mirpur 10", dropoff: "BracU", departureTime: "09:00", seats: 3 },
+  });
+  check("unverified user blocked from rides -> 403", r.status === 403);
+  check("verification required message", typeof r.body?.message === "string" && r.body.message.includes("verified"));
+
+  r = await request("PUT", `/admin/verifications/${recreatedStudentId}`, {
+    headers: adminAuth,
+    body: { decision: "approved" },
+  });
+  check("re-approve main user -> 200", r.status === 200);
+  r = await request("PUT", `/admin/verifications/${riderStudentId}`, {
+    headers: adminAuth,
+    body: { decision: "approved" },
+  });
+  check("approve rider -> 200", r.status === 200);
+
+  r = await request("POST", "/rides", {
+    body: { pickup: "Mirpur 10", dropoff: "BracU", departureTime: "09:00", seats: 3 },
+  });
+  check("create ride -> 201", r.status === 201, JSON.stringify(r.body));
+  const rideId = r.body?.data?._id;
+
+  r = await request("POST", `/rides/${rideId}/requests`, { headers: riderAuth });
+  check("rider requests a seat -> 201", r.status === 201, JSON.stringify(r.body));
+  const requestId = r.body?.data?._id;
+
+  r = await request("DELETE", `/rides/${rideId}/requests/${requestId}`, { headers: auth });
+  check("poster cannot cancel the rider's request -> 403", r.status === 403);
+
+  r = await request("DELETE", `/rides/${rideId}/requests/${requestId}`, {
+    headers: riderAuth,
+    body: {},
+  });
+  check("pending cancel without reason -> 200", r.status === 200, JSON.stringify(r.body));
+  check("no reason stored for pending cancel", r.body?.data?.cancelReason === null);
+  check("request status cancelled", r.body?.data?.status === "cancelled");
+
+  r = await request("DELETE", `/rides/${rideId}/requests/${requestId}`, {
+    headers: riderAuth,
+    body: { reason: "Again" },
+  });
+  check("cancelling the request again -> 400", r.status === 400);
+
+  r = await request("DELETE", `/rides/${rideId}`, { headers: riderAuth });
+  check("rider cannot cancel the ride -> 403", r.status === 403);
+
+  r = await request("POST", `/rides/${rideId}/requests`, { headers: riderAuth });
+  check("re-request after cancel -> 201", r.status === 201, JSON.stringify(r.body));
+
+  r = await request("PUT", `/rides/${rideId}/requests/${requestId}`, {
+    body: { decision: "accepted" },
+  });
+  check("poster accepts request -> 200", r.status === 200, JSON.stringify(r.body));
+
+  r = await request("DELETE", `/rides/${rideId}/requests/${requestId}`, {
+    headers: riderAuth,
+    body: {},
+  });
+  check("accepted cancel without reason -> 400", r.status === 400);
+  check("accepted reason required message", r.body?.message === "Cancellation reason is required");
+
+  r = await request("DELETE", `/rides/${rideId}/requests/${requestId}`, {
+    headers: riderAuth,
+    body: { reason: "No longer needed" },
+  });
+  check("rider cancels an accepted request -> 200", r.status === 200, JSON.stringify(r.body));
+  check("accepted request status cancelled", r.body?.data?.status === "cancelled");
+  check("accepted cancel reason stored", r.body?.data?.cancelReason === "No longer needed");
+
+  r = await request("GET", "/rides/mine");
+  check(
+    "poster sees cancellation reason",
+    r.body?.data?.posted?.[0]?.requests?.some(
+      (x) => x.status === "cancelled" && x.cancelReason === "No longer needed"
+    )
+  );
+
+  r = await request("DELETE", `/rides/${rideId}/requests/${requestId}`, {
+    headers: riderAuth,
+    body: { reason: "Again" },
+  });
+  check("cancelling accepted request again -> 400", r.status === 400);
+
+  r = await request("DELETE", `/rides/${rideId}`, { headers: auth });
+  check("poster cancels ride -> 200", r.status === 200, JSON.stringify(r.body));
+  check("ride status cancelled", r.body?.data?.status === "cancelled");
+
+  r = await request("DELETE", `/rides/${rideId}`, { headers: auth });
+  check("cancelling the ride again -> 400", r.status === 400);
+
+  r = await request("GET", "/rides/mine");
+  check("cancelled posted ride hidden from mine", !r.body?.data?.posted?.some((x) => x._id === rideId));
+
+  r = await request("GET", "/rides/mine", { headers: riderAuth });
+  check("auto-cancelled request hidden from mine", !r.body?.data?.requested?.some((x) => x.ride?._id === rideId));
+
+  r = await request("GET", "/rides");
+  check("cancelled ride not listed in browse", !r.body?.data?.some((x) => x._id === rideId));
 
   console.log(`\n${failures === 0 ? "ALL TESTS PASSED" : `${failures} TEST(S) FAILED`}`);
   await mongo.stop();

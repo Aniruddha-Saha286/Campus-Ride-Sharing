@@ -1,6 +1,17 @@
 node_modules/
 dist/
 .env
+*.env
+backend/.env
+frontend/.env
 backend/uploads/
 *.log
 .DS_Store
+
+# Hide internal team / AI rule files
+AGENTS.md
+.agents/
+.gemini/
+
+# Hide internal smoke test scripts
+backend/scripts/smoke.js
