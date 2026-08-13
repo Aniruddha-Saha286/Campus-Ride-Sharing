@@ -1,28 +1,21 @@
 const multer = require("multer");
-const path = require("path");
-const fs = require("fs");
+const { CloudinaryStorage } = require("multer-storage-cloudinary");
+const cloudinary = require("../utils/cloudinary");
 
-const allowedTypes = [".jpg", ".jpeg", ".png", ".webp"];
 const allowedMimes = ["image/jpeg", "image/png", "image/webp"];
 
-const createUpload = (subdir) => {
-  const uploadDir = path.join(__dirname, "..", "uploads", subdir);
-  if (!fs.existsSync(uploadDir)) {
-    fs.mkdirSync(uploadDir, { recursive: true });
-  }
-
-  const storage = multer.diskStorage({
-    destination: (req, file, cb) => cb(null, uploadDir),
-    filename: (req, file, cb) => {
-      const ext = path.extname(file.originalname).toLowerCase();
-      const owner = (req.user && req.user.id) || "anon";
-      cb(null, `${owner}-${Date.now()}${ext}`);
-    },
+const createUpload = (folder) => {
+  const storage = new CloudinaryStorage({
+    cloudinary,
+    params: (req, file) => ({
+      folder,
+      allowed_formats: ["jpg", "jpeg", "png", "webp"],
+      public_id: `${(req.user && req.user.id) || "anon"}-${Date.now()}`,
+    }),
   });
 
   const fileFilter = (req, file, cb) => {
-    const ext = path.extname(file.originalname).toLowerCase();
-    if (!allowedTypes.includes(ext) || !allowedMimes.includes(file.mimetype)) {
+    if (!allowedMimes.includes(file.mimetype)) {
       const err = new Error("Only .jpg, .jpeg, .png, or .webp images are allowed");
       err.status = 400;
       return cb(err);
@@ -30,11 +23,7 @@ const createUpload = (subdir) => {
     cb(null, true);
   };
 
-  return multer({
-    storage,
-    fileFilter,
-    limits: { fileSize: 5 * 1024 * 1024 },
-  });
+  return multer({ storage, fileFilter, limits: { fileSize: 5 * 1024 * 1024 } });
 };
 
 module.exports = {
