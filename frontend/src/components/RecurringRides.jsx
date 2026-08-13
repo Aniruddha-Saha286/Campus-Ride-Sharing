@@ -21,6 +21,7 @@ import {
   deleteRecurringRide,
   generateRecurringRides,
 } from "../api/recurringApi";
+import RecurringOccurrences from "./RecurringOccurrences.jsx";
 
 const formatDate = (date) => {
   if (!date) return "—";
@@ -219,6 +220,8 @@ export default function RecurringRides() {
           )}
         </div>
       )}
+
+      <RecurringOccurrences />
     </section>
   );
 }

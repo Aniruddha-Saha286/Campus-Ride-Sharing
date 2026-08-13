@@ -1,5 +1,6 @@
 const Ride = require("../models/Ride");
 const RecurringRide = require("../models/RecurringRide");
+const RecurringSkip = require("../models/RecurringSkip");
 
 const CHECK_INTERVAL_MS = 60 * 60 * 1000;
 
@@ -12,11 +13,21 @@ const startOfToday = () => {
   return today;
 };
 
+const dateKey = (date) => {
+  const d = new Date(date);
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${d.getFullYear()}-${month}-${day}`;
+};
+
 const runRecurringGeneration = async () => {
   if (running) return 0;
   running = true;
   try {
     const today = startOfToday();
+    const skipDate = dateKey(new Date());
+    const skips = await RecurringSkip.find({ date: skipDate });
+    const skipped = new Set(skips.map((skip) => String(skip.recurring)));
     const templates = await RecurringRide.find({ status: "active" });
     let generated = 0;
     for (const template of templates) {
@@ -32,6 +43,8 @@ const runRecurringGeneration = async () => {
       );
       if (!claimed) continue;
 
+      if (skipped.has(String(template._id))) continue;
+
       try {
         await Ride.create({
           poster: template.poster,
@@ -44,6 +57,7 @@ const runRecurringGeneration = async () => {
           departureTime: template.departureTime,
           seats: template.seats,
           notes: template.notes || "",
+          recurringRef: template._id,
         });
         generated += 1;
       } catch (err) {
