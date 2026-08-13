@@ -28,7 +28,7 @@ import {
   deleteAccount,
 } from "../api/api";
 import { useAuth } from "../auth";
-import { FieldError, Section, TextInput, DateInput, SelectInput } from "./fields.jsx";
+import { FieldError, Section, TextInput, DateInput, SelectInput } from "./Fields.jsx";
 
 const YEAR_OPTIONS = ["1st Year", "2nd Year", "3rd Year", "4th Year", "5th Year", "Graduate"];
 const RELATION_OPTIONS = ["Parent", "Guardian", "Sibling", "Relative", "Friend", "Other"];
@@ -84,6 +84,13 @@ export default function ProfileSetup() {
     import.meta.env.VITE_API_URL || "http://localhost:5000/api",
   ).origin;
 
+  // Cloudinary returns absolute URLs; only prepend API_ORIGIN for legacy relative paths.
+  const resolveUrl = (url) => {
+    if (!url) return null;
+    if (url.startsWith("http://") || url.startsWith("https://")) return url;
+    return `${API_ORIGIN}/${url}`;
+  };
+
   useEffect(() => {
     (async () => {
       try {
@@ -122,12 +129,12 @@ export default function ProfileSetup() {
         setForm(loadedForm);
         initialFormRef.current = JSON.stringify(loadedForm);
         if (data.profilePhoto) {
-          const photoUrl = `${API_ORIGIN}/${data.profilePhoto}`;
+          const photoUrl = resolveUrl(data.profilePhoto);
           setExistingPhotoUrl(photoUrl);
           initialPhotoRef.current = photoUrl;
         }
         if (data.studentIdCard) {
-          setIdCardUrl(`${API_ORIGIN}/${data.studentIdCard}`);
+          setIdCardUrl(resolveUrl(data.studentIdCard));
         }
         setIdVerificationStatus(data.idVerificationStatus || "none");
         setIdVerificationNote(data.idVerificationNote || null);
@@ -214,12 +221,18 @@ export default function ProfileSetup() {
     }
     setErrors((prev) => ({ ...prev, photo: null }));
     setPhotoFile(file);
-    setPhotoPreview(URL.createObjectURL(file));
+    setPhotoPreview((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return URL.createObjectURL(file);
+    });
   };
 
   const clearPhoto = async () => {
+    setPhotoPreview((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return null;
+    });
     setPhotoFile(null);
-    setPhotoPreview(null);
     if (existingPhotoUrl) {
       try {
         await deleteProfilePhoto();
@@ -244,12 +257,18 @@ export default function ProfileSetup() {
     }
     setErrors((prev) => ({ ...prev, idCard: null }));
     setIdCardFile(file);
-    setIdCardPreview(URL.createObjectURL(file));
+    setIdCardPreview((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return URL.createObjectURL(file);
+    });
   };
 
   const clearIdCard = () => {
+    setIdCardPreview((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return null;
+    });
     setIdCardFile(null);
-    setIdCardPreview(null);
     if (idCardInputRef.current) idCardInputRef.current.value = "";
   };
 
@@ -333,7 +352,7 @@ export default function ProfileSetup() {
         if (err.response?.status === 404) {
           const cardRes = await createProfile(payload, idCardFile);
           if (cardRes.data?.data?.studentIdCard) {
-            setIdCardUrl(`${API_ORIGIN}/${cardRes.data.data.studentIdCard}`);
+            setIdCardUrl(resolveUrl(cardRes.data.data.studentIdCard));
           }
           setIdVerificationStatus(cardRes.data?.data?.idVerificationStatus || "pending");
           setIdVerificationNote(cardRes.data?.data?.idVerificationNote || null);
@@ -350,7 +369,7 @@ export default function ProfileSetup() {
       if (photoFile) {
         const photoRes = await uploadProfilePhoto(photoFile);
         if (photoRes.data?.data?.profilePhoto) {
-          newPhotoUrl = `${API_ORIGIN}/${photoRes.data.data.profilePhoto}`;
+          newPhotoUrl = resolveUrl(photoRes.data.data.profilePhoto);
           setExistingPhotoUrl(newPhotoUrl);
         }
         setPhotoFile(null);
@@ -360,7 +379,7 @@ export default function ProfileSetup() {
       if (!idCardHandled && idCardFile) {
         const cardRes = await uploadStudentIdCard(idCardFile);
         if (cardRes.data?.data?.studentIdCard) {
-          setIdCardUrl(`${API_ORIGIN}/${cardRes.data.data.studentIdCard}`);
+          setIdCardUrl(resolveUrl(cardRes.data.data.studentIdCard));
         }
         setIdVerificationStatus(cardRes.data?.data?.idVerificationStatus || "pending");
         setIdVerificationNote(cardRes.data?.data?.idVerificationNote || null);

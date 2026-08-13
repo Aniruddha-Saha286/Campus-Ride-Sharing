@@ -1,6 +1,7 @@
-const jwt = require("jsonwebtoken");
 const { OAuth2Client } = require("google-auth-library");
 const Student = require("../models/Student");
+const { signToken } = require("../utils/jwt");
+const { getBanMessage } = require("../utils/ban");
 
 const ALLOWED_DOMAINS = ["g.bracu.ac.bd", "bracu.ac.bd"];
 
@@ -34,19 +35,10 @@ const googleLogin = async (req, res) => {
 
     const student = await Student.findOne({ universityEmail: email });
     if (student && student.isBanned) {
-      return res.status(403).json({
-        success: false,
-        message: student.banReason
-          ? `Your account has been banned. Reason: ${student.banReason}`
-          : "Your account has been banned. Please contact the administrator.",
-      });
+      return res.status(403).json({ success: false, message: getBanMessage(student) });
     }
 
-    const token = jwt.sign(
-      { id: sub, universityEmail: email },
-      process.env.JWT_SECRET,
-      { expiresIn: "7d" }
-    );
+    const token = signToken({ id: sub, universityEmail: email });
 
     res.json({ success: true, token, universityEmail: email });
   } catch (err) {

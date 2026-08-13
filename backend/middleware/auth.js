@@ -1,5 +1,6 @@
 const jwt = require("jsonwebtoken");
 const Student = require("../models/Student");
+const { getBanMessage } = require("../utils/ban");
 
 const protect = async (req, res, next) => {
   const authHeader = req.headers.authorization;
@@ -17,12 +18,7 @@ const protect = async (req, res, next) => {
     if (req.user.universityEmail) {
       const student = await Student.findOne({ universityEmail: req.user.universityEmail });
       if (student && student.isBanned) {
-        return res.status(403).json({
-          success: false,
-          message: student.banReason
-            ? `Your account has been banned. Reason: ${student.banReason}`
-            : "Your account has been banned. Please contact the administrator.",
-        });
+        return res.status(403).json({ success: false, message: getBanMessage(student) });
       }
     }
 

@@ -8,11 +8,13 @@ const {
   getVerification,
   listUsers,
   reviewVerification,
+  getStats,
   banStudent,
   unbanStudent,
 } = require("../controllers/adminController");
 
 router.post("/login", adminLogin);
+router.get("/stats", protect, adminOnly, getStats);
 router.get("/verifications", protect, adminOnly, listVerifications);
 router.get("/verifications/:id", protect, adminOnly, getVerification);
 router.put("/verifications/:id", protect, adminOnly, reviewVerification);

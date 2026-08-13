@@ -2,5 +2,9 @@
   "name": "campus-ride-sharing",
   "version": "1.0.0",
   "private": true,
-  "description": "Campus Ride Sharing — monorepo root (backend + frontend)"
+  "description": "Campus Ride Sharing — monorepo root (backend + frontend)",
+  "dependencies": {
+    "cloudinary": "^1.41.3",
+    "multer-storage-cloudinary": "^4.0.0"
+  }
 }
