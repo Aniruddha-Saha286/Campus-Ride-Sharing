@@ -159,6 +159,11 @@ const requestSeat = asyncHandler(async (req, res) => {
     return res.status(400).json({ success: false, message: "You cannot request a seat on your own ride" });
   }
 
+  const booked = await Booking.countDocuments({ ride: ride._id, status: "accepted" });
+  if (booked >= ride.seats) {
+    return res.status(400).json({ success: false, message: "No seats left on this ride" });
+  }
+
   const existing = await Booking.findOne({ ride: ride._id, rider: me._id });
   if (existing) {
     if (existing.status === "cancelled") {
@@ -167,11 +172,6 @@ const requestSeat = asyncHandler(async (req, res) => {
       return res.status(201).json({ success: true, data: existing });
     }
     return res.status(409).json({ success: false, message: "You already requested a seat on this ride" });
-  }
-
-  const booked = await Booking.countDocuments({ ride: ride._id, status: "accepted" });
-  if (booked >= ride.seats) {
-    return res.status(400).json({ success: false, message: "No seats left on this ride" });
   }
 
   const booking = await Booking.create({ ride: ride._id, rider: me._id });

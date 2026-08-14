@@ -38,7 +38,9 @@ const formatTime = (t) => {
 };
 
 const to24 = (time12) => {
-  const match = String(time12 || "").trim().match(/^(\d{1,2}):(\d{2})\s*(am|pm)$/i);
+  const s = String(time12 || "").trim();
+  if (/^([01]\d|2[0-3]):[0-5]\d$/.test(s)) return s;
+  const match = s.match(/^(\d{1,2}):(\d{2})\s*(am|pm)$/i);
   if (!match) return "08:00";
   let hours = Number(match[1]);
   const minutes = match[2];
@@ -261,6 +263,7 @@ export default function CommuterMatches() {
         <div className="space-y-3">
           {matches.map((match) => {
             const s = match.student;
+            if (!s) return null;
             const src = s.profilePhoto || null;
             const initial = (s.name || "?").trim().charAt(0).toUpperCase();
             return (

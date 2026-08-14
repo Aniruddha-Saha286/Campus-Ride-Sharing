@@ -9,6 +9,7 @@ const rideRoutes = require("./routes/rideRoutes");
 const contactRoutes = require("./routes/contactRoutes");
 const matchRoutes = require("./routes/matchRoutes");
 const recurringRoutes = require("./routes/recurringRoutes");
+const recurringSkipRoutes = require("./routes/recurringSkipRoutes");
 const { startRecurringJob } = require("./utils/recurringJob");
 
 const app = express();
@@ -23,6 +24,7 @@ app.use("/api/rides", rideRoutes);
 app.use("/api", contactRoutes);
 app.use("/api/matches", matchRoutes);
 app.use("/api/recurring", recurringRoutes);
+app.use("/api/recurring", recurringSkipRoutes);
 
 app.get("/", (req, res) => {
   res.json({ message: "Campus Ride Sharing API" });

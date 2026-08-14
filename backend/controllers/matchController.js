@@ -7,7 +7,6 @@ const CommutePreference = require("../models/CommutePreference");
 const asyncHandler = require("../utils/asyncHandler");
 const { findMe } = require("../utils/studentHelper");
 
-const { TIME_REGEX } = Ride;
 const { WEEKDAYS } = CommuteProfile;
 const { TIME_12H_REGEX } = CommutePreference;
 
@@ -190,42 +189,6 @@ const getContactInfo = asyncHandler(async (req, res) => {
   });
 });
 
-const getMyCommuteProfile = asyncHandler(async (req, res) => {
-  const me = await findMe(req);
-  if (!me) return res.status(404).json({ success: false, message: "Profile not found" });
-  const profile = await CommuteProfile.findOne({ student: me._id });
-  res.json({ success: true, data: profile || null });
-});
-
-const upsertCommuteProfile = asyncHandler(async (req, res) => {
-  const me = await findMe(req);
-  if (!me) return res.status(404).json({ success: false, message: "Profile not found" });
-
-  const { destination, departureTime, days } = req.body || {};
-  if (!destination || !String(destination).trim()) {
-    return res.status(400).json({ success: false, message: "Destination is required" });
-  }
-  if (!departureTime || !TIME_REGEX.test(departureTime)) {
-    return res.status(400).json({ success: false, message: "Departure time must be in HH:MM (24-hour) format" });
-  }
-
-  const { validDays, error: daysError } = validateDays(days);
-  if (daysError) return res.status(400).json({ success: false, message: daysError });
-
-  const profile = await CommuteProfile.findOneAndUpdate(
-    { student: me._id },
-    {
-      student: me._id,
-      destination: String(destination).trim(),
-      departureTime,
-      days: validDays,
-    },
-    { new: true, runValidators: true, upsert: true }
-  );
-
-  res.json({ success: true, data: profile });
-});
-
 const getMyCommuterPreference = asyncHandler(async (req, res) => {
   const me = await findMe(req);
   if (!me) return res.status(404).json({ success: false, message: "Profile not found" });
@@ -272,8 +235,6 @@ const upsertCommuterPreference = asyncHandler(async (req, res) => {
 module.exports = {
   getSuggestedMatches,
   getContactInfo,
-  getMyCommuteProfile,
-  upsertCommuteProfile,
   getMyCommuterPreference,
   upsertCommuterPreference,
 };

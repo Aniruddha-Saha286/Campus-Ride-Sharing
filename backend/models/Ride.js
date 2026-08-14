@@ -19,6 +19,7 @@ const rideSchema = new mongoose.Schema(
     seats: { type: Number, required: true, min: 1, max: 6 },
     notes: { type: String, default: "", trim: true, maxlength: 1000 },
     status: { type: String, enum: ["open", "cancelled"], default: "open" },
+    recurringRef: { type: mongoose.Schema.Types.ObjectId, ref: "RecurringRide", default: null },
   },
   { timestamps: true }
 );

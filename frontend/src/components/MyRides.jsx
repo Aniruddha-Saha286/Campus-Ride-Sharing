@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import {
   CarFront,
   MapPin,
@@ -24,6 +24,7 @@ import {
   cancelRide,
 } from "../api/rideApi";
 import AcceptedContactModal from "./AcceptedContactModal.jsx";
+import usePolling from "../hooks/usePolling";
 
 
 const STATUS_META = {
@@ -46,9 +47,12 @@ export default function MyRides() {
   const load = async () => {
     setError("");
     try {
-      const [myRes, browseRes] = await Promise.all([getMyRides(), listRides()]);
-      setMy(myRes.data.data);
-      setBrowse(browseRes.data.data || []);
+      const [myResult, browseResult] = await Promise.allSettled([getMyRides(), listRides()]);
+      if (myResult.status === "fulfilled") setMy(myResult.value.data.data);
+      if (browseResult.status === "fulfilled") setBrowse(browseResult.value.data.data || []);
+      if (myResult.status === "rejected" && browseResult.status === "rejected") {
+        setError(myResult.reason?.response?.data?.message || "Could not load rides.");
+      }
     } catch (err) {
       setError(err.response?.data?.message || "Could not load rides.");
     } finally {
@@ -56,10 +60,7 @@ export default function MyRides() {
     }
   };
 
-  useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  usePolling(load);
 
   const respond = async (rideId, requestId, decision) => {
     setBusy(requestId);
@@ -101,6 +102,7 @@ export default function MyRides() {
   };
 
   const openCancelModal = (rideId, requestId, status) => {
+    setError("");
     setCancelTarget({ rideId, requestId, status });
     setCancelReason("");
   };
@@ -302,6 +304,7 @@ export default function MyRides() {
                 {my.requested.map((req) => {
                   const meta = STATUS_META[req.status] || STATUS_META.pending;
                   const ride = req.ride;
+                  if (!ride) return null;
                   return (
                     <div key={req._id} className="rounded-2xl border border-slate-100 bg-white p-5 shadow-card">
                       <div className="flex flex-wrap items-center justify-between gap-y-3">

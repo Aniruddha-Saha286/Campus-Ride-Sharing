@@ -74,6 +74,7 @@ export default function NewRide() {
       navigate("/dashboard");
     } catch (err) {
       setError(err.response?.data?.message || "Could not post your ride.");
+    } finally {
       setSaving(false);
     }
   };
