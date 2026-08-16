@@ -61,11 +61,11 @@ const runRecurringGeneration = async () => {
         });
         generated += 1;
       } catch (err) {
+        console.error(`Recurring generation failed for template ${template._id}:`, err.message);
         await RecurringRide.updateOne(
           { _id: template._id },
           { $set: { generatedForDate: null } }
         );
-        throw err;
       }
     }
     return generated;

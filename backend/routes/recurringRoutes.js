@@ -2,6 +2,7 @@ const express = require("express");
 const router = express.Router();
 const protect = require("../middleware/auth");
 const idVerified = require("../middleware/idVerified");
+const adminOnly = require("../middleware/admin");
 const {
   createFromRide,
   listMine,
