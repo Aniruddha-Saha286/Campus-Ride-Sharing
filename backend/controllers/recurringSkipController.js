@@ -1,6 +1,5 @@
 const mongoose = require("mongoose");
 const Ride = require("../models/Ride");
-const Booking = require("../models/Booking");
 const RecurringRide = require("../models/RecurringRide");
 const RecurringSkip = require("../models/RecurringSkip");
 const asyncHandler = require("../utils/asyncHandler");
@@ -78,15 +77,10 @@ const skipOccurrence = asyncHandler(async (req, res) => {
   const skip = await RecurringSkip.create({ recurring: template._id, student: template.poster, date });
 
   if (date === todayKey()) {
-    const ridesToCancel = await Ride.find({ recurringRef: template._id, status: "open" }).select("_id");
-    const rideIds = ridesToCancel.map((r) => r._id);
-    if (rideIds.length > 0) {
-      await Ride.updateMany({ _id: { $in: rideIds } }, { $set: { status: "cancelled" } });
-      await Booking.updateMany(
-        { ride: { $in: rideIds }, status: { $in: ["pending", "accepted"] } },
-        { $set: { status: "cancelled" } }
-      );
-    }
+    await Ride.updateMany(
+      { recurringRef: template._id, status: "open" },
+      { $set: { status: "cancelled" } }
+    );
   }
 
   res.status(201).json({ success: true, data: toSkip(skip) });

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   CalendarX2,
   CalendarCheck,
@@ -14,7 +14,6 @@ import {
   skipOccurrence,
   restoreOccurrence,
 } from "../api/recurringSkipApi";
-import usePolling from "../hooks/usePolling";
 
 const dateKey = (value) => {
   if (!value) return "";
@@ -65,16 +64,16 @@ export default function RecurringOccurrences() {
     }
   };
 
-  usePolling(load);
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  const run = async (key, action, failMessage, templateId) => {
+  const run = async (key, action, failMessage) => {
     setBusy(key);
     setError("");
     try {
       await action();
-      if (templateId) {
-        setDates((prev) => ({ ...prev, [templateId]: "" }));
-      }
       await load();
     } catch (err) {
       setError(err.response?.data?.message || failMessage);
@@ -160,7 +159,7 @@ export default function RecurringOccurrences() {
                   className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-700 outline-none transition focus:border-brand-300 focus:ring-2 focus:ring-brand-100"
                 />
                 <button
-                  onClick={() => run(id, () => skipOccurrence(id, custom), "Could not cancel this occurrence.", id)}
+                  onClick={() => run(id, () => skipOccurrence(id, custom), "Could not cancel this occurrence.")}
                   disabled={busy === id || !custom}
                   className="flex items-center gap-1 rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
                 >
