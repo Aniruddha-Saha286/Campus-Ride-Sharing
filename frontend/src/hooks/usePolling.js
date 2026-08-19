@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { onRealtime } from "../api/realtimeBus";
 
 const usePolling = (callback, intervalMs = 7000) => {
   const callbackRef = useRef(callback);
@@ -6,7 +7,7 @@ const usePolling = (callback, intervalMs = 7000) => {
   const inFlightRef = useRef(false);
 
   useEffect(() => {
-    const tick = async () => {
+    const run = async () => {
       if (inFlightRef.current) return;
       inFlightRef.current = true;
       try {
@@ -17,9 +18,16 @@ const usePolling = (callback, intervalMs = 7000) => {
       }
     };
 
-    tick();
-    const timer = setInterval(tick, intervalMs);
-    return () => clearInterval(timer);
+    const off = onRealtime(() => {
+      run();
+    });
+
+    run();
+    const timer = setInterval(run, intervalMs);
+    return () => {
+      off();
+      clearInterval(timer);
+    };
   }, [intervalMs]);
 };
 

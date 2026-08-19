@@ -95,14 +95,14 @@ const validateProfile = [
     }),
 ];
 
-const parseProfileBody = (req, res, next) => {
+const parseProfileBody = async (req, res, next) => {
   try {
     if (typeof req.body.profile === "string" && req.body.profile.length > 0) {
       req.body = JSON.parse(req.body.profile);
     }
     next();
   } catch (err) {
-    if (req.file) deleteUploadedFile(req.file.path);
+    if (req.file) await deleteUploadedFile(req.file.path);
     return res.status(400).json({ success: false, message: "Invalid profile data" });
   }
 };
