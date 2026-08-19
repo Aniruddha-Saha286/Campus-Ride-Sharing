@@ -1,10 +1,12 @@
 const mongoose = require("mongoose");
 const Ride = require("../models/Ride");
 const Booking = require("../models/Booking");
+const RidePayment = require("../models/RidePayment");
 const RecurringRide = require("../models/RecurringRide");
 const RecurringSkip = require("../models/RecurringSkip");
 const asyncHandler = require("../utils/asyncHandler");
 const { findMe } = require("../utils/studentHelper");
+const { refreshPayment, roundMoney, TERMINAL_STATUSES } = require("../utils/ridePaymentHelper");
 
 const { DATE_REGEX } = RecurringSkip;
 
@@ -81,11 +83,37 @@ const skipOccurrence = asyncHandler(async (req, res) => {
     const ridesToCancel = await Ride.find({ recurringRef: template._id, status: "open" }).select("_id");
     const rideIds = ridesToCancel.map((r) => r._id);
     if (rideIds.length > 0) {
+      const payments = await RidePayment.find({ ride: { $in: rideIds } });
+      for (const payment of payments) {
+        await refreshPayment(payment);
+        if (
+          roundMoney(roundMoney(payment.amountPaid || 0) + roundMoney(payment.lateFeePaid || 0)) > 0 &&
+          !["REFUNDED", "CANCELLED"].includes(payment.status)
+        ) {
+          await RecurringSkip.deleteOne({ _id: skip._id });
+          return res.status(400).json({
+            success: false,
+            message:
+              "Some passengers have already paid. Request and confirm refunds for the paid payments before cancelling this occurrence.",
+          });
+        }
+      }
       await Ride.updateMany({ _id: { $in: rideIds } }, { $set: { status: "cancelled" } });
       await Booking.updateMany(
         { ride: { $in: rideIds }, status: { $in: ["pending", "accepted"] } },
         { $set: { status: "cancelled" } }
       );
+      for (const payment of payments) {
+        await refreshPayment(payment);
+        if (TERMINAL_STATUSES.includes(payment.status)) continue;
+        payment.status = "CANCELLED";
+        payment.remainingAmount = 0;
+        payment.lateFee = 0;
+        payment.lateFeePaid = 0;
+        payment.totalOutstanding = 0;
+        payment.cancelledAt = new Date();
+        await payment.save();
+      }
     }
   }
 

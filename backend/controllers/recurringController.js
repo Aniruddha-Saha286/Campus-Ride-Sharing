@@ -172,9 +172,6 @@ const removeRecurring = asyncHandler(async (req, res) => {
 });
 
 const generateNow = asyncHandler(async (req, res) => {
-  const me = await findMe(req);
-  if (!me) return res.status(404).json({ success: false, message: "Profile not found" });
-
   const generated = await runRecurringGeneration();
   res.json({ success: true, data: { generated } });
 });

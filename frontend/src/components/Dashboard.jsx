@@ -13,6 +13,7 @@ import { useAuth } from "../auth";
 import MyRides from "./MyRides.jsx";
 import CommuterMatches from "./CommuterMatches.jsx";
 import RecurringRides from "./RecurringRides.jsx";
+import DashboardPayments from "./DashboardPayments.jsx";
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -184,6 +185,8 @@ export default function Dashboard() {
             </p>
           </div>
         )}
+
+        <DashboardPayments />
 
         <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
           <div className="min-w-0 xl:col-span-2">

@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import {
   CarFront,
   MapPin,
@@ -13,6 +14,8 @@ import {
   Inbox,
   Search,
   Info,
+  Wallet,
+  AlertTriangle,
 } from "lucide-react";
 import {
   getMyRides,
@@ -34,6 +37,20 @@ const STATUS_META = {
   cancelled: { label: "Cancelled", classes: "bg-slate-100 text-slate-500" },
 };
 
+const PAY_STATUS_META = {
+  PAID: { label: "Paid", classes: "bg-emerald-50 text-emerald-700" },
+  PARTIAL: { label: "Partially paid", classes: "bg-sky-50 text-sky-700" },
+  PENDING: { label: "Pending", classes: "bg-amber-50 text-amber-700" },
+  DUE: { label: "Due", classes: "bg-orange-50 text-orange-700" },
+  OVERDUE: { label: "Overdue", classes: "bg-rose-50 text-rose-700" },
+  REFUND_REQUESTED: { label: "Refund requested", classes: "bg-violet-50 text-violet-700" },
+  REFUNDED: { label: "Refunded", classes: "bg-slate-100 text-slate-600" },
+  CANCELLED: { label: "Cancelled", classes: "bg-slate-100 text-slate-500" },
+};
+
+const formatTaka = (value) =>
+  `৳${Number(value || 0).toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
+
 export default function MyRides() {
   const [my, setMy] = useState(null);
   const [browse, setBrowse] = useState([]);
@@ -43,6 +60,9 @@ export default function MyRides() {
   const [busy, setBusy] = useState("");
   const [cancelTarget, setCancelTarget] = useState(null);
   const [cancelReason, setCancelReason] = useState("");
+  const [cancelRideTarget, setCancelRideTarget] = useState(null);
+  const [seatCounts, setSeatCounts] = useState({});
+  const navigate = useNavigate();
 
   const load = async () => {
     setError("");
@@ -75,11 +95,11 @@ export default function MyRides() {
     }
   };
 
-  const requestSeatOn = async (rideId) => {
+  const requestSeatOn = async (rideId, seats) => {
     setBusy(rideId);
     setError("");
     try {
-      await requestSeat(rideId);
+      await requestSeat(rideId, seats);
       await load();
     } catch (err) {
       setError(err.response?.data?.message || "Could not request a seat.");
@@ -127,7 +147,12 @@ export default function MyRides() {
     setBusy(rideId);
     setError("");
     try {
-      await cancelRide(rideId);
+      const res = await cancelRide(rideId);
+      const fine = res.data?.cancellationFine;
+      if (fine > 0) {
+        setError(`Ride cancelled. A cancellation fine of ${formatTaka(fine)} has been applied.`);
+      }
+      setCancelRideTarget(null);
       await load();
     } catch (err) {
       setError(err.response?.data?.message || "Could not cancel the ride.");
@@ -206,9 +231,18 @@ export default function MyRides() {
                         <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
                           {ride.requests.length} request{ride.requests.length === 1 ? "" : "s"}
                         </span>
+                        {ride.charge > 0 && (
+                          <button
+                            onClick={() => navigate(`/rides/${ride._id}/payments`)}
+                            className="flex items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-700"
+                          >
+                            <Wallet size={13} />
+                            Payment management
+                          </button>
+                        )}
                         {ride.status === "open" && (
                           <button
-                            onClick={() => cancelRideOn(ride._id)}
+                            onClick={() => setCancelRideTarget(ride)}
                             disabled={busy === ride._id}
                             className="flex items-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-600 shadow-sm transition hover:border-rose-300 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
                           >
@@ -283,7 +317,7 @@ export default function MyRides() {
                                   <Info size={13} className="mt-0.5 shrink-0" />
                                   <span>Request cancelled — {req.cancelReason}</span>
                                 </div>
-                              )}
+                               )}
                             </div>
                           );
                         })}
@@ -342,6 +376,27 @@ export default function MyRides() {
                           )}
                         </div>
                       </div>
+                      {req.payment && (
+                        <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl bg-slate-50 px-3 py-2">
+                          <Wallet size={13} className="text-brand-500" />
+                          <span className="text-xs font-semibold text-slate-700">
+                            Due: {formatTaka(req.payment.totalOutstanding)}
+                          </span>
+                          <span
+                            className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                              (PAY_STATUS_META[req.payment.status] || PAY_STATUS_META.PENDING).classes
+                            }`}
+                          >
+                            {(PAY_STATUS_META[req.payment.status] || PAY_STATUS_META.PENDING).label}
+                          </span>
+                          <Link
+                            to={`/ride-payments/${req.payment._id}`}
+                            className="ml-auto text-xs font-semibold text-brand-600 hover:underline"
+                          >
+                            Manage payment
+                          </Link>
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -384,14 +439,34 @@ export default function MyRides() {
                       </p>
                     </div>
                   </div>
-                  <button
-                    onClick={() => requestSeatOn(ride._id)}
-                    disabled={busy === ride._id}
-                    className="flex items-center gap-1 rounded-lg bg-brand-600 px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-700 disabled:opacity-60"
-                  >
-                    {busy === ride._id ? <Loader2 className="animate-spin" size={13} /> : <Users size={13} />}
-                    Request seat
-                  </button>
+                  <div className="flex items-center gap-3">
+                    {ride.seatsLeft > 1 && (
+                      <div className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-1.5">
+                        <span className="text-[11px] font-semibold text-slate-400">Seats</span>
+                        <select
+                          value={seatCounts[ride._id] || 1}
+                          onChange={(e) =>
+                            setSeatCounts((prev) => ({ ...prev, [ride._id]: Number(e.target.value) }))
+                          }
+                          className="bg-transparent text-xs font-bold text-slate-700 outline-none"
+                        >
+                          {Array.from({ length: ride.seatsLeft }, (_, i) => i + 1).map((n) => (
+                            <option key={n} value={n}>
+                              {n}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                    <button
+                      onClick={() => requestSeatOn(ride._id, seatCounts[ride._id] || 1)}
+                      disabled={busy === ride._id}
+                      className="flex items-center gap-1 rounded-lg bg-brand-600 px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-700 disabled:opacity-60"
+                    >
+                      {busy === ride._id ? <Loader2 className="animate-spin" size={13} /> : <Users size={13} />}
+                      Request seat
+                    </button>
+                  </div>
                 </div>
               </div>
             ))}
@@ -455,6 +530,54 @@ export default function MyRides() {
                 {busy === cancelTarget.requestId ? <Loader2 className="animate-spin" size={15} /> : <X size={15} />}
                 Cancel request
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {cancelRideTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 px-4">
+          <div className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-card">
+            <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+              <h3 className="flex items-center gap-2 text-base font-bold text-slate-900">
+                <AlertTriangle size={16} className="text-rose-600" /> Cancel ride
+              </h3>
+              <button onClick={() => setCancelRideTarget(null)} className="rounded-lg p-1 text-slate-400 transition hover:text-slate-600">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="space-y-4 px-5 py-5">
+              <p className="text-sm text-slate-600">
+                This will cancel the ride from <span className="font-semibold">{cancelRideTarget.pickup}</span> to{" "}
+                <span className="font-semibold">{cancelRideTarget.dropoff}</span>. All pending and accepted requests will
+                be cancelled.
+              </p>
+              {cancelRideTarget.requests?.some((r) => r.status === "accepted") && (
+                <div className="flex items-start gap-2 rounded-lg bg-amber-50 px-3 py-2 text-xs font-medium text-amber-700">
+                  <AlertTriangle size={13} className="mt-0.5 shrink-0" />
+                  <span>
+                    This ride has accepted passengers. If any have paid, you must refund them before cancelling. A
+                    cancellation fine may apply if more than 30 minutes have passed since the first booking was accepted.
+                  </span>
+                </div>
+              )}
+              <div className="flex flex-wrap justify-end gap-3 border-t border-slate-100 pt-4">
+                <button
+                  onClick={() => setCancelRideTarget(null)}
+                  disabled={busy === cancelRideTarget._id}
+                  className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 transition hover:border-slate-300 disabled:opacity-60"
+                >
+                  Keep ride
+                </button>
+                <button
+                  onClick={() => cancelRideOn(cancelRideTarget._id)}
+                  disabled={busy === cancelRideTarget._id}
+                  className="flex items-center gap-1.5 rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-rose-700 disabled:opacity-60"
+                >
+                  {busy === cancelRideTarget._id ? <Loader2 className="animate-spin" size={15} /> : <X size={15} />}
+                  Cancel ride
+                </button>
+              </div>
             </div>
           </div>
         </div>

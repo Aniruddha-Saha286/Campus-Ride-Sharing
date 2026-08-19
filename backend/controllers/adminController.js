@@ -97,6 +97,9 @@ const unbanStudent = asyncHandler(async (req, res) => {
 });
 
 const reviewVerification = asyncHandler(async (req, res) => {
+  if (!mongoose.isValidObjectId(req.params.id)) {
+    return res.status(400).json({ success: false, message: "Invalid student id" });
+  }
   const { decision, note } = req.body || {};
 
   if (!["approved", "rejected"].includes(decision)) {
