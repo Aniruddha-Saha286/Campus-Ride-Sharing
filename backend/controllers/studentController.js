@@ -44,7 +44,7 @@ const createProfile = asyncHandler(async (req, res) => {
       ...profileFields(req.body),
     });
   } catch (err) {
-    deleteUploadedFile(cardPath);
+    await deleteUploadedFile(cardPath);
     if (err.code === 11000) {
       err.status = 409;
       err.message = "Profile already exists for this account";

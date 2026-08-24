@@ -38,6 +38,7 @@ export default function NewRide() {
   const [routeInfo, setRouteInfo] = useState(null);
   const [departureTime, setDepartureTime] = useState("08:00");
   const [seats, setSeats] = useState(1);
+  const [charge, setCharge] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -70,8 +71,9 @@ export default function NewRide() {
         dropoffLng: dropoff.lng,
         departureTime,
         seats,
+        charge: charge ? Number(charge) : undefined,
       });
-      navigate("/dashboard");
+      navigate("/my-rides");
     } catch (err) {
       setError(err.response?.data?.message || "Could not post your ride.");
     } finally {
@@ -143,7 +145,7 @@ export default function NewRide() {
             {statCard("Distance", Route, displayDistance())}
           </div>
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <label className="rounded-xl border border-slate-100 bg-white p-4 shadow-card">
               <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                 Departure time
@@ -170,6 +172,20 @@ export default function NewRide() {
                   </option>
                 ))}
               </select>
+            </label>
+            <label className="rounded-xl border border-slate-100 bg-white p-4 shadow-card">
+              <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Charge per seat (BDT)
+              </span>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={charge}
+                onChange={(e) => setCharge(e.target.value)}
+                placeholder="0 = free"
+                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-800 outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
+              />
             </label>
           </div>
 
