@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Repeat2,
   RefreshCw,
@@ -29,7 +29,6 @@ import {
   generateRecurringRides,
 } from "../api/recurringApi";
 import RecurringOccurrences from "./RecurringOccurrences.jsx";
-import usePolling from "../hooks/usePolling";
 
 const formatDate = (date) => {
   if (!date) return "—";
@@ -97,7 +96,10 @@ export default function RecurringRides() {
     }
   };
 
-  usePolling(load);
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const run = async (key, action, failMessage, successMessage) => {
     setBusy(key);

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   CalendarX2,
   CalendarCheck,
@@ -16,7 +16,6 @@ import {
   skipOccurrence,
   restoreOccurrence,
 } from "../api/recurringSkipApi";
-import usePolling from "../hooks/usePolling";
 
 const dateKey = (value) => {
   if (!value) return "";
@@ -73,16 +72,16 @@ export default function RecurringOccurrences() {
     }
   };
 
-  usePolling(load);
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  const run = async (key, action, failMessage, templateId) => {
+  const run = async (key, action, failMessage) => {
     setBusy(key);
     setError("");
     try {
       await action();
-      if (templateId) {
-        setDates((prev) => ({ ...prev, [templateId]: "" }));
-      }
       await load();
     } catch (err) {
       setError(err.response?.data?.message || failMessage);

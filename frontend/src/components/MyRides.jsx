@@ -143,7 +143,6 @@ function MapDetailBar({ ride, expanded, onToggle }) {
     </div>
   );
 }
-
 export default function MyRides() {
   const [my, setMy] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -185,7 +184,6 @@ export default function MyRides() {
       setBusy("");
     }
   };
-
   const reveal = async (requestId) => {
     setBusy(requestId);
     setError("");
@@ -522,7 +520,6 @@ export default function MyRides() {
           </p>
         </div>
       )}
-
       {contact && <AcceptedContactModal contact={contact} onClose={() => setContact(null)} />}
 
       {cancelTarget && (

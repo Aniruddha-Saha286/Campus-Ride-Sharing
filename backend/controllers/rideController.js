@@ -457,6 +457,7 @@ const cancelRide = asyncHandler(async (req, res) => {
     return res.status(400).json({ success: false, message: "This ride is already cancelled" });
   }
 
+
   await Booking.updateMany({ ride: ride._id, status: { $in: ["pending", "accepted"] } }, { status: "cancelled" });
 
   for (const payment of payments) {
