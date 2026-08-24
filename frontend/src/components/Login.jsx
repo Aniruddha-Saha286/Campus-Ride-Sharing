@@ -42,18 +42,21 @@ export default function Login() {
         {busy ? (
           <div className="flex items-center justify-center gap-2 py-3 text-sm font-medium text-slate-500">
             <Loader2 className="animate-spin text-brand-500" size={18} />
-            Verifying your university account...
+            Verifying your account...
           </div>
         ) : (
-          <GoogleLogin
-            onSuccess={handleSuccess}
-            onError={() => setError("Google sign-in failed. Please try again.")}
-            shape="pill"
-            text="signin_with"
-            theme="outline"
-            size="large"
-            width={380}
-          />
+          <div className="flex flex-col items-center gap-4">
+            <div className="w-full flex justify-center">
+              <GoogleLogin
+                onSuccess={handleSuccess}
+                onError={() => setError("Google sign-in failed. Please try again.")}
+                shape="pill"
+                text="signin_with"
+                theme="outline"
+                size="large"
+              />
+            </div>
+          </div>
         )}
 
         {error && (

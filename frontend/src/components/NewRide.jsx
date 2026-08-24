@@ -73,7 +73,7 @@ export default function NewRide() {
         seats,
         charge: charge ? Number(charge) : undefined,
       });
-      navigate("/dashboard");
+      navigate("/my-rides");
     } catch (err) {
       setError(err.response?.data?.message || "Could not post your ride.");
     } finally {

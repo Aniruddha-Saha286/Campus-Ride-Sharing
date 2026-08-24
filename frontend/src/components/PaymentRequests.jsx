@@ -12,12 +12,15 @@ import {
   HandCoins,
   Clock3,
   Inbox,
+  ChevronRight,
+  Scale,
 } from "lucide-react";
 import {
   getMyPaymentRequests,
   createPaymentRequest,
   searchPaymentStudents,
 } from "../api/paymentRequestApi";
+import { getDues, getPaymentSummary } from "../api/ridePaymentApi";
 import usePolling from "../hooks/usePolling";
 
 const STATUS_META = {
@@ -63,6 +66,8 @@ export default function PaymentRequests() {
   const [dueDate, setDueDate] = useState("");
   const [saving, setSaving] = useState(false);
   const [createError, setCreateError] = useState("");
+  const [dues, setDues] = useState(null);
+  const [summary, setSummary] = useState(null);
 
   const load = async () => {
     setError("");
@@ -76,7 +81,23 @@ export default function PaymentRequests() {
     }
   };
 
+  const loadDues = async () => {
+    try {
+      const res = await getDues();
+      setDues(res.data.data);
+    } catch {}
+  };
+
+  const loadSummary = async () => {
+    try {
+      const res = await getPaymentSummary();
+      setSummary(res.data.data);
+    } catch {}
+  };
+
   usePolling(load);
+  usePolling(loadDues);
+  usePolling(loadSummary);
 
   useEffect(() => {
     if (!searchQuery.trim() || selectedPayer) {
@@ -237,6 +258,84 @@ export default function PaymentRequests() {
           </div>
         )}
 
+        {dues && (
+          <div className="mb-6 rounded-2xl border border-slate-100 bg-white p-5 shadow-card">
+            <h2 className="mb-3 flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-slate-500">
+              <Scale size={15} /> Net balance
+            </h2>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <div className="rounded-xl bg-rose-50 px-4 py-3">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-rose-700">You owe</p>
+                <p className="mt-0.5 text-sm font-bold text-rose-800">{formatTaka(dues.youOweTotal)}</p>
+              </div>
+              <div className="rounded-xl bg-emerald-50 px-4 py-3">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700">Owed to you</p>
+                <p className="mt-0.5 text-sm font-bold text-emerald-800">{formatTaka(dues.owedToYouTotal)}</p>
+              </div>
+              <div className="rounded-xl bg-slate-100 px-4 py-3">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-600">Net</p>
+                <p className="mt-0.5 text-sm font-bold text-slate-800">{formatTaka(dues.net)}</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {summary?.recentTransactions && summary.recentTransactions.length > 0 && (
+          <div className="mb-6 rounded-2xl border border-slate-100 bg-white p-5 shadow-card">
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-slate-500">
+                <Clock3 size={15} /> Recent transactions
+              </h2>
+              <Link
+                to="/transactions"
+                className="flex items-center gap-1 rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-slate-900"
+              >
+                View all <ChevronRight size={12} />
+              </Link>
+            </div>
+            <div className="divide-y divide-slate-100">
+              {summary.recentTransactions.map((t) => (
+                <div key={t._id} className="flex items-center justify-between gap-3 py-2.5">
+                  <div className="flex min-w-0 items-center gap-2.5">
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-brand-500 to-brand-600 text-[11px] font-bold text-white">
+                      {(t.counterparty?.name || "?").trim().charAt(0).toUpperCase()}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="flex items-center gap-1 truncate text-xs font-bold text-slate-800">
+                        <span className="truncate">{t.counterparty?.name || "Student"}</span>
+                        {t.counterparty?.idVerified && (
+                          <BadgeCheck size={12} className="shrink-0 fill-brand-600 text-white" />
+                        )}
+                      </p>
+                      <p className="flex items-center gap-1 text-[11px] text-slate-400">
+                        <Clock3 size={10} /> {formatDate(t.createdAt)}
+                        {t.ride && (
+                          <span className="truncate"> · {t.ride.pickup} → {t.ride.dropoff}</span>
+                        )}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                        t.direction === "received" ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"
+                      }`}
+                    >
+                      {t.direction === "received" ? "Received" : "Paid"}
+                    </span>
+                    <span
+                      className={`text-xs font-bold ${
+                        t.direction === "received" ? "text-emerald-600" : "text-rose-600"
+                      }`}
+                    >
+                      {t.direction === "received" ? "+" : "−"}{formatTaka(t.amount)}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
         {data.length === 0 ? (
           <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-white px-6 py-14 text-center shadow-card">
             <Inbox size={28} className="text-slate-300" />

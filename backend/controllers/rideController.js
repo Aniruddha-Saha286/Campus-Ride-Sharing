@@ -77,6 +77,10 @@ const listRides = asyncHandler(async (req, res) => {
         _id: r._id,
         pickup: r.pickup,
         dropoff: r.dropoff,
+        pickupLat: r.pickupLat,
+        pickupLng: r.pickupLng,
+        dropoffLat: r.dropoffLat,
+        dropoffLng: r.dropoffLng,
         departureTime: r.departureTime,
         seats: r.seats,
         seatsLeft,
@@ -118,6 +122,10 @@ const getMyRides = asyncHandler(async (req, res) => {
       _id: r._id,
       pickup: r.pickup,
       dropoff: r.dropoff,
+      pickupLat: r.pickupLat,
+      pickupLng: r.pickupLng,
+      dropoffLat: r.dropoffLat,
+      dropoffLng: r.dropoffLng,
       departureTime: r.departureTime,
       seats: r.seats,
       seatsLeft: Math.max(0, r.seats - accepted),
@@ -186,6 +194,10 @@ const getMyRides = asyncHandler(async (req, res) => {
             _id: b.ride._id,
             pickup: b.ride.pickup,
             dropoff: b.ride.dropoff,
+            pickupLat: b.ride.pickupLat,
+            pickupLng: b.ride.pickupLng,
+            dropoffLat: b.ride.dropoffLat,
+            dropoffLng: b.ride.dropoffLng,
             departureTime: b.ride.departureTime,
             seats: b.ride.seats,
             charge: b.ride.charge || 0,
@@ -411,7 +423,7 @@ const cancelRide = asyncHandler(async (req, res) => {
   }
 
   if (ride.status !== "open") {
-    return res.status(400).json({ success: false, message: "This ride is already cancelled" });
+    return res.status(400).json({ success: false, message: "This ride cannot be cancelled (it is already " + ride.status + ")" });
   }
 
   const payments = await RidePayment.find({ ride: ride._id });
@@ -444,6 +456,7 @@ const cancelRide = asyncHandler(async (req, res) => {
   if (!claimed) {
     return res.status(400).json({ success: false, message: "This ride is already cancelled" });
   }
+
 
   await Booking.updateMany({ ride: ride._id, status: { $in: ["pending", "accepted"] } }, { status: "cancelled" });
 
