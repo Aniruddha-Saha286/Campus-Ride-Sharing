@@ -19,6 +19,8 @@ import {
   FileText,
   ChevronDown,
   ChevronUp,
+  MessageSquare,
+  Pencil,
 } from "lucide-react";
 import {
   getMyRides,
@@ -28,7 +30,10 @@ import {
   cancelRide,
 } from "../api/rideApi";
 import AcceptedContactModal from "./AcceptedContactModal.jsx";
+import RideChatModal from "./RideChatModal.jsx";
+import EditRideModal from "./EditRideModal.jsx";
 import usePolling from "../hooks/usePolling";
+import { formatTime12Hour } from "../utils/rideStatusConstants";
 
 const STATUS_META = {
   pending: { label: "Pending", classes: "bg-amber-50 text-amber-700" },
@@ -113,7 +118,7 @@ function RideDetailPanel({ ride }) {
         </div>
         <div>
           <p className="mb-0.5 text-[10px] font-bold uppercase tracking-widest text-slate-400">Departure</p>
-          <p className="text-sm font-semibold text-slate-700">{ride.departureTime}</p>
+          <p className="text-sm font-semibold text-slate-700">{formatTime12Hour(ride.departureTime)}</p>
         </div>
       </div>
     </div>
@@ -143,6 +148,7 @@ function MapDetailBar({ ride, expanded, onToggle }) {
     </div>
   );
 }
+
 export default function MyRides() {
   const [my, setMy] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -152,6 +158,8 @@ export default function MyRides() {
   const [cancelTarget, setCancelTarget] = useState(null);
   const [cancelReason, setCancelReason] = useState("");
   const [cancelRideTarget, setCancelRideTarget] = useState(null);
+  const [editRideTarget, setEditRideTarget] = useState(null);
+  const [chatTarget, setChatTarget] = useState(null);
   const [expandedIds, setExpandedIds] = useState({});
   const navigate = useNavigate();
 
@@ -184,6 +192,7 @@ export default function MyRides() {
       setBusy("");
     }
   };
+
   const reveal = async (requestId) => {
     setBusy(requestId);
     setError("");
@@ -277,7 +286,7 @@ export default function MyRides() {
         {shortLabel(ride.dropoff)}
       </span>
       <span className="flex items-center gap-1 text-xs text-slate-400">
-        <Clock3 size={12} /> {ride.departureTime}
+        <Clock3 size={12} /> {formatTime12Hour(ride.departureTime)}
       </span>
     </div>
   );
@@ -328,14 +337,34 @@ export default function MyRides() {
                             </button>
                           )}
                           {ride.status === "open" && (
-                            <button
-                              onClick={() => setCancelRideTarget(ride)}
-                              disabled={busy === ride._id}
-                              className="flex items-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-600 shadow-sm transition hover:border-rose-300 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
-                            >
-                              {busy === ride._id ? <Loader2 className="animate-spin" size={13} /> : <X size={13} />}
-                              Cancel ride
-                            </button>
+                            <>
+                              {ride.seatsLeft > 0 ? (
+                                <button
+                                  onClick={() => setEditRideTarget(ride)}
+                                  disabled={busy === ride._id}
+                                  className="flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 shadow-sm transition hover:border-blue-300 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                  <Pencil size={13} />
+                                  Edit offer
+                                </button>
+                              ) : (
+                                <span
+                                  title="Cannot edit: this ride offer is fully booked"
+                                  className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-400 cursor-not-allowed"
+                                >
+                                  <Pencil size={13} />
+                                  Fully booked
+                                </span>
+                              )}
+                              <button
+                                onClick={() => setCancelRideTarget(ride)}
+                                disabled={busy === ride._id}
+                                className="flex items-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-600 shadow-sm transition hover:border-rose-300 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
+                              >
+                                {busy === ride._id ? <Loader2 className="animate-spin" size={13} /> : <X size={13} />}
+                                Cancel ride
+                              </button>
+                            </>
                           )}
                         </div>
                       </div>
@@ -394,14 +423,23 @@ export default function MyRides() {
                                       </>
                                     )}
                                     {req.status === "accepted" && (
-                                      <button
-                                        onClick={() => reveal(req._id)}
-                                        disabled={busy === req._id}
-                                        className="flex items-center gap-1 rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-slate-900 disabled:opacity-60"
-                                      >
-                                        {busy === req._id ? <Loader2 className="animate-spin" size={13} /> : <Eye size={13} />}
-                                        Reveal contact
-                                      </button>
+                                      <>
+                                        <button
+                                          onClick={() => setChatTarget({ rideId: ride._id, otherUser: req.rider })}
+                                          className="flex items-center gap-1 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-xs transition hover:bg-blue-700"
+                                        >
+                                          <MessageSquare size={13} />
+                                          Chat
+                                        </button>
+                                        <button
+                                          onClick={() => reveal(req._id)}
+                                          disabled={busy === req._id}
+                                          className="flex items-center gap-1 rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-slate-900 disabled:opacity-60"
+                                        >
+                                          {busy === req._id ? <Loader2 className="animate-spin" size={13} /> : <Eye size={13} />}
+                                          Reveal contact
+                                        </button>
+                                      </>
                                     )}
                                   </div>
                                 </div>
@@ -460,15 +498,45 @@ export default function MyRides() {
                                 Cancel request
                               </button>
                             )}
-                            {req.status === "accepted" && (
+                            {req.status === "declined" && (
                               <button
-                                onClick={() => reveal(req._id)}
+                                onClick={async () => {
+                                  setBusy(req._id);
+                                  try {
+                                    await cancelRequest(ride._id, req._id);
+                                    await load();
+                                  } catch {
+                                    /* ignore */
+                                  } finally {
+                                    setBusy("");
+                                  }
+                                }}
                                 disabled={busy === req._id}
-                                className="flex items-center gap-1 rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-slate-900 disabled:opacity-60"
+                                className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-600 shadow-sm transition hover:border-slate-300 hover:bg-slate-100 disabled:opacity-60"
+                                title="Dismiss this declined request from your list"
                               >
-                                {busy === req._id ? <Loader2 className="animate-spin" size={13} /> : <Eye size={13} />}
-                                Reveal driver contact
+                                {busy === req._id ? <Loader2 className="animate-spin" size={13} /> : <X size={13} />}
+                                Dismiss
                               </button>
+                            )}
+                            {req.status === "accepted" && (
+                              <>
+                                <button
+                                  onClick={() => setChatTarget({ rideId: ride._id, otherUser: ride.poster })}
+                                  className="flex items-center gap-1 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-xs transition hover:bg-blue-700"
+                                >
+                                  <MessageSquare size={13} />
+                                  Message driver
+                                </button>
+                                <button
+                                  onClick={() => reveal(req._id)}
+                                  disabled={busy === req._id}
+                                  className="flex items-center gap-1 rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-slate-900 disabled:opacity-60"
+                                >
+                                  {busy === req._id ? <Loader2 className="animate-spin" size={13} /> : <Eye size={13} />}
+                                  Reveal driver contact
+                                </button>
+                              </>
                             )}
                           </div>
                         </div>
@@ -520,6 +588,7 @@ export default function MyRides() {
           </p>
         </div>
       )}
+
       {contact && <AcceptedContactModal contact={contact} onClose={() => setContact(null)} />}
 
       {cancelTarget && (
@@ -627,6 +696,22 @@ export default function MyRides() {
             </div>
           </div>
         </div>
+      )}
+
+      {editRideTarget && (
+        <EditRideModal
+          ride={editRideTarget}
+          onClose={() => setEditRideTarget(null)}
+          onSuccess={() => load()}
+        />
+      )}
+
+      {chatTarget && (
+        <RideChatModal
+          rideId={chatTarget.rideId}
+          otherUser={chatTarget.otherUser}
+          onClose={() => setChatTarget(null)}
+        />
       )}
     </div>
   );

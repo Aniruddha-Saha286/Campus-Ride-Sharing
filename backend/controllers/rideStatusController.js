@@ -16,10 +16,11 @@ const VALID_TRANSITIONS = {
 const TIMELINE_POPULATE = { path: "timeline.updatedBy", select: "name profilePhoto" };
 
 const getOrCreateStatus = async (rideId) => {
-  let doc = await RideStatus.findOne({ ride: rideId });
-  if (!doc) {
-    doc = await RideStatus.create({ ride: rideId, tripStatus: "upcoming", timeline: [{ status: "upcoming" }] });
-  }
+  const doc = await RideStatus.findOneAndUpdate(
+    { ride: rideId },
+    { $setOnInsert: { ride: rideId, tripStatus: "upcoming", timeline: [{ status: "upcoming" }] } },
+    { upsert: true, new: true }
+  );
   return doc;
 };
 
@@ -51,19 +52,18 @@ const getMyRideStatuses = asyncHandler(async (req, res) => {
     return res.json({ success: true, data: [] });
   }
 
+  const allExisting = await RideStatus.find({ ride: { $in: rideIds } }).select("ride tripStatus");
+  const allExistingIds = new Set(allExisting.map((s) => String(s.ride)));
+  const missing = rideIds.filter((id) => !allExistingIds.has(id));
+
+  if (missing.length > 0) {
+    await Promise.all(missing.map((id) => getOrCreateStatus(id)));
+  }
+
   let statuses = await RideStatus.find({
     ride: { $in: rideIds },
     tripStatus: { $ne: "completed" },
   });
-
-  const existingRideIds = new Set(statuses.map((s) => String(s.ride)));
-  const missing = rideIds.filter((id) => !existingRideIds.has(id));
-  if (missing.length > 0) {
-    const newDocs = await RideStatus.insertMany(
-      missing.map((id) => ({ ride: id, tripStatus: "upcoming", timeline: [{ status: "upcoming" }] }))
-    );
-    statuses = statuses.concat(newDocs);
-  }
 
   await RideStatus.populate(statuses, TIMELINE_POPULATE);
 
@@ -76,13 +76,14 @@ const getMyRideStatuses = asyncHandler(async (req, res) => {
 
   const data = statuses.map((s) => {
     const ride = rideMap.get(String(s.ride));
+    const posterId = ride?.poster?._id ? String(ride.poster._id) : null;
     return {
       _id: s._id,
       tripStatus: s.tripStatus,
       updatedAt: s.updatedAt,
       timeline: formatTimeline(s.timeline),
       ride: formatRide(ride, formatPublicStudent),
-      role: ride && String(ride.poster._id) === String(me._id) ? "poster" : "rider",
+      role: posterId && posterId === String(me._id) ? "poster" : "rider",
     };
   });
 
@@ -135,9 +136,17 @@ const updateRideStatus = asyncHandler(async (req, res) => {
   const ride = await Ride.findById(req.params.rideId);
   if (!ride) return res.status(404).json({ success: false, message: "Ride not found" });
 
+  if (ride.status === "cancelled") {
+    return res.status(400).json({ success: false, message: "Cannot update status of a cancelled ride" });
+  }
+
   const { isPoster, hasAccess } = await checkRideAccess(ride, me);
   if (!hasAccess) {
     return res.status(403).json({ success: false, message: "Only the ride poster or an accepted rider can update status" });
+  }
+
+  if (!isPoster) {
+    return res.status(403).json({ success: false, message: "Only the ride poster can update the trip status" });
   }
 
   const statusDoc = await getOrCreateStatus(ride._id);

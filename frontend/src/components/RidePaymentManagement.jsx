@@ -502,7 +502,7 @@ export default function RidePaymentManagement() {
               )}
               <div className="flex flex-wrap justify-end gap-3 border-t border-slate-100 pt-4">
                 <button
-                  onClick={() => setRefundTarget(false)}
+                  onClick={() => setRefundTarget(null)}
                   disabled={busy === refundTarget}
                   className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 transition hover:border-slate-300 disabled:opacity-60"
                 >

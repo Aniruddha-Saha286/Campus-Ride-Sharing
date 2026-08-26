@@ -19,7 +19,7 @@ const rideSchema = new mongoose.Schema(
     seats: { type: Number, required: true, min: 1, max: 6 },
     charge: { type: Number, default: 0, min: 0 },
     notes: { type: String, default: "", trim: true, maxlength: 1000 },
-    status: { type: String, enum: ["open", "cancelled"], default: "open" },
+    status: { type: String, enum: ["open", "cancelled", "completed"], default: "open" },
     cancellationFine: { type: Number, default: 0, min: 0 },
     recurringRef: { type: mongoose.Schema.Types.ObjectId, ref: "RecurringRide", default: null },
   },

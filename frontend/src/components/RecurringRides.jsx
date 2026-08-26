@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import {
   Repeat2,
   RefreshCw,
@@ -29,6 +29,8 @@ import {
   generateRecurringRides,
 } from "../api/recurringApi";
 import RecurringOccurrences from "./RecurringOccurrences.jsx";
+import usePolling from "../hooks/usePolling";
+import { formatTime12Hour } from "../utils/rideStatusConstants";
 
 const formatDate = (date) => {
   if (!date) return "—";
@@ -96,10 +98,7 @@ export default function RecurringRides() {
     }
   };
 
-  useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  usePolling(load);
 
   const run = async (key, action, failMessage, successMessage) => {
     setBusy(key);
@@ -226,7 +225,7 @@ export default function RecurringRides() {
 
                   <div className="mt-2.5 flex items-center gap-3 text-xs text-slate-500">
                     <span className="flex items-center gap-1 font-semibold text-slate-700">
-                      <Clock3 size={12} className="text-brand-500" /> {ride.departureTime}
+                      <Clock3 size={12} className="text-brand-500" /> {formatTime12Hour(ride.departureTime)}
                     </span>
                     <span>·</span>
                     <span className="flex items-center gap-1">
@@ -335,7 +334,7 @@ export default function RecurringRides() {
                         <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500">
                           <span className="flex items-center gap-1 font-semibold text-slate-700">
                             <Clock3 size={13} className="text-brand-400" />
-                            {template.departureTime}
+                            {formatTime12Hour(template.departureTime)}
                           </span>
                           <span className="flex items-center gap-1">
                             <Users size={13} className="text-brand-400" />
@@ -460,7 +459,7 @@ export default function RecurringRides() {
                             Scheduled Time
                           </p>
                           <p className="text-sm font-semibold text-slate-700">
-                            {template.departureTime}
+                            {formatTime12Hour(template.departureTime)}
                           </p>
                         </div>
                         <div>

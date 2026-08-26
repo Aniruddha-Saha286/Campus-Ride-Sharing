@@ -85,11 +85,11 @@ const executePayment = async (paymentIDOrOpts) => {
   if (BKASH_SANDBOX && (!BKASH_APP_KEY || BKASH_APP_KEY === "your_bkash_app_key")) {
     if (typeof paymentIDOrOpts === "object" && !paymentID) {
       return {
-        transactionId: generateTrxId(),
+        trxID: generateTrxId(),
         amount: paymentIDOrOpts.amount,
-        paymentStatus: "COMPLETED",
+        transactionStatus: "Completed",
         paymentID: `mock-${Date.now()}`,
-        payerId: paymentIDOrOpts.payerId,
+        payerReference: paymentIDOrOpts.payerReference || paymentIDOrOpts.payerId,
       };
     }
     if (!mockTrxCache.has(paymentID)) {

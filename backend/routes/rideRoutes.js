@@ -10,11 +10,13 @@ const {
   respondToRequest,
   cancelRequest,
   cancelRide,
+  updateRide,
 } = require("../controllers/rideController");
 
 router.get("/", protect, idVerified, listRides);
 router.get("/mine", protect, idVerified, getMyRides);
 router.post("/", protect, idVerified, createRide);
+router.put("/:rideId", protect, idVerified, updateRide);
 router.post("/:rideId/requests", protect, idVerified, requestSeat);
 router.put("/:rideId/requests/:requestId", protect, idVerified, respondToRequest);
 router.delete("/:rideId/requests/:requestId", protect, idVerified, cancelRequest);

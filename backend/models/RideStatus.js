@@ -31,8 +31,6 @@ const rideStatusSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-rideStatusSchema.index({ ride: 1 });
-
 const RideStatus = mongoose.model("RideStatus", rideStatusSchema);
 
 module.exports = RideStatus;

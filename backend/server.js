@@ -16,6 +16,7 @@ const ridePaymentRoutes = require("./routes/ridePaymentRoutes");
 const notificationRoutes = require("./routes/notificationRoutes");
 const rideStatusRoutes = require("./routes/rideStatusRoutes");
 const rideHistoryRoutes = require("./routes/rideHistoryRoutes");
+const chatRoutes = require("./routes/chatRoutes");
 const { startRecurringJob } = require("./utils/recurringJob");
 const { startDueReminderJob } = require("./utils/dueReminderJob");
 
@@ -38,6 +39,7 @@ app.use("/api/ride-payments", ridePaymentRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/ride-statuses", rideStatusRoutes);
 app.use("/api/ride-history", rideHistoryRoutes);
+app.use("/api/chat", chatRoutes);
 
 app.get("/", (req, res) => {
   res.json({ message: "Campus Ride Sharing API" });

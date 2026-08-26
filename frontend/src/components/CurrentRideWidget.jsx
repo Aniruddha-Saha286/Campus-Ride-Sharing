@@ -19,7 +19,7 @@ import {
   updateRideStatus,
 } from "../api/rideStatusApi";
 import usePolling from "../hooks/usePolling";
-import { TRIP_META, NEXT_ACTION } from "../utils/rideStatusConstants";
+import { TRIP_META, NEXT_ACTION, formatTime12Hour } from "../utils/rideStatusConstants";
 
 const isCoord = (s) => /^-?\d+\.\d+$/.test(s.trim());
 
@@ -177,7 +177,7 @@ export default function CurrentRideWidget() {
 
                       <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-0.5 text-[11px] font-semibold text-slate-600">
                         <Clock3 size={11} className="text-brand-500" />
-                        {entry.ride.departureTime}
+                        {formatTime12Hour(entry.ride.departureTime)}
                       </span>
 
                       <span
@@ -221,7 +221,7 @@ export default function CurrentRideWidget() {
                       {meta.label}
                     </span>
 
-                    {action && (
+                    {action && isDriver && (
                       <button
                         onClick={() => advance(entry.ride._id, entry.tripStatus)}
                         disabled={busy === entry.ride._id}

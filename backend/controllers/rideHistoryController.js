@@ -15,7 +15,7 @@ exports.getDriverHistory = async (req, res) => {
     const rideIds = rides.map((r) => r._id);
     const counts = await Booking.aggregate([
       { $match: { ride: { $in: rideIds }, status: "accepted" } },
-      { $group: { _id: "$ride", count: { $sum: 1 } } },
+      { $group: { _id: "$ride", count: { $sum: "$seats" } } },
     ]);
     const countMap = new Map(counts.map((c) => [String(c._id), c.count]));
 
@@ -34,6 +34,7 @@ exports.getDriverHistory = async (req, res) => {
 
     res.json({ success: true, data: result });
   } catch (err) {
+    console.error("getDriverHistory error:", err);
     res.status(500).json({ success: false, message: "Could not load driver history." });
   }
 };
@@ -73,6 +74,7 @@ exports.getPassengerHistory = async (req, res) => {
 
     res.json({ success: true, data: result });
   } catch (err) {
+    console.error("getPassengerHistory error:", err);
     res.status(500).json({ success: false, message: "Could not load passenger history." });
   }
 };

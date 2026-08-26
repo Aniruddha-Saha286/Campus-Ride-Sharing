@@ -892,13 +892,12 @@ const verifyBkash = asyncHandler(async (req, res) => {
     payment,
     amount: resultAmount,
     providerTransactionId: resultTrxId,
-    me,
   });
   if (outcome.error) {
     return res.status(outcome.error.status).json({ success: false, message: outcome.error.message });
   }
   if (outcome.alreadyRecorded) {
-    const recorded = await Transaction.findOne({ providerTransactionId: result.transactionId });
+    const recorded = await Transaction.findOne({ providerTransactionId: resultTrxId });
     await refreshPayment(payment);
     return res.json({
       success: true,
@@ -1672,8 +1671,8 @@ const getTransactionReceipt = asyncHandler(async (req, res) => {
   if (!transaction) return res.status(404).json({ success: false, message: "Transaction not found" });
 
   const involved =
-    transaction.payer && String(transaction.payer._id) === String(me._id) ||
-    transaction.receiver && String(transaction.receiver._id) === String(me._id);
+    (transaction.payer && String(transaction.payer._id) === String(me._id)) ||
+    (transaction.receiver && String(transaction.receiver._id) === String(me._id));
   if (!involved) {
     return res.status(403).json({ success: false, message: "You are not part of this transaction" });
   }

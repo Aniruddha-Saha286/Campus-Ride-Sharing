@@ -269,15 +269,15 @@ const recordPayment = asyncHandler(async (req, res) => {
   let payment;
   if (method === "BKASH") {
     const bkashResult = await executePayment({ amount, payerId: me._id });
-    payment = await Payment.create({
+      payment = await Payment.create({
       paymentRequest: request._id,
       paidBy: me._id,
       paidTo: request.requester,
       amount,
       method: "BKASH",
-      reference: bkashResult.transactionId,
+      reference: bkashResult.trxID || bkashResult.transactionId || null,
       status: "COMPLETED",
-      paidAt: Date.now(),
+      paidAt: new Date(),
     });
   } else {
     payment = await Payment.create({
@@ -288,7 +288,7 @@ const recordPayment = asyncHandler(async (req, res) => {
       method: "MANUAL",
       reference: trimmedReference,
       status: "PENDING_VERIFICATION",
-      paidAt: Date.now(),
+      paidAt: new Date(),
     });
   }
 
@@ -337,7 +337,7 @@ const verifyManualPayment = asyncHandler(async (req, res) => {
 
   payment.status = decision === "verified" ? "VERIFIED" : "REJECTED";
   payment.verifiedBy = me._id;
-  payment.verifiedAt = Date.now();
+  payment.verifiedAt = new Date();
   await payment.save();
 
   const payments = await loadPayments(request._id);

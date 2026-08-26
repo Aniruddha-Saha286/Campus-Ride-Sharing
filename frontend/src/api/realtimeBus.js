@@ -21,13 +21,25 @@ const connect = () => {
     reconnectTimer = setTimeout(connect, 3000);
     return;
   }
-  source.addEventListener("payment", (e) => {
+  const seenKeys = new Set();
+  const handleEvent = (e) => {
     try {
-      fire(JSON.parse(e.data));
+      const data = JSON.parse(e.data);
+      const key = `${data.type || ""}_${data.paymentId || ""}_${data.messageId || ""}_${data.rideId || ""}_${data.text || ""}_${data.amount || ""}`;
+      if (key !== "_____") {
+        if (seenKeys.has(key)) return;
+        seenKeys.add(key);
+        setTimeout(() => seenKeys.delete(key), 2500);
+      }
+      fire(data);
     } catch (err) {
       /* ignore malformed events */
     }
-  });
+  };
+  source.addEventListener("notification", handleEvent);
+  source.addEventListener("payment", handleEvent);
+  source.addEventListener("message", handleEvent);
+  source.addEventListener("chat", handleEvent);
   source.addEventListener("open", () => {
     if (reconnectTimer) {
       clearTimeout(reconnectTimer);

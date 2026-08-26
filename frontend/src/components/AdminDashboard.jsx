@@ -20,6 +20,11 @@ import {
   Fingerprint,
   Ban,
   CircleCheck,
+  Car,
+  Navigation,
+  History,
+  Calendar,
+  Wallet,
 } from "lucide-react";
 import {
   getVerifications,
@@ -28,7 +33,10 @@ import {
   getAdminStats,
   banUser,
   unbanUser,
+  getAdminRideTracker,
+  getAdminUserRides,
 } from "../api/api";
+import { formatTime12Hour, TRIP_META } from "../utils/rideStatusConstants";
 
 
 const STATUS_META = {
@@ -36,6 +44,12 @@ const STATUS_META = {
   pending: { label: "Pending", classes: "bg-amber-50 text-amber-700", Icon: Clock3 },
   approved: { label: "Verified", classes: "bg-emerald-50 text-emerald-700", Icon: BadgeCheck },
   rejected: { label: "Rejected", classes: "bg-rose-50 text-rose-700", Icon: XCircle },
+};
+
+const shortLabel = (str) => {
+  if (!str) return "";
+  const parts = str.split(",").map((s) => s.trim()).filter(Boolean);
+  return parts[0] || str;
 };
 
 const formatDate = (value) =>
@@ -81,9 +95,49 @@ export default function AdminDashboard() {
   const [actionBusy, setActionBusy] = useState(false);
   const [stats, setStats] = useState(null);
 
+  // Live Tracker State
+  const [trackerList, setTrackerList] = useState([]);
+  const [trackerLoading, setTrackerLoading] = useState(false);
+  const [trackerFilter, setTrackerFilter] = useState("all");
+  const [trackerError, setTrackerError] = useState("");
+
+  // Per-User Ride History State
+  const [userRides, setUserRides] = useState(null);
+  const [userRidesLoading, setUserRidesLoading] = useState(false);
+  const [userRidesView, setUserRidesView] = useState("driver");
+
   const handleLogout = () => {
     localStorage.removeItem("adminToken");
     navigate("/admin/login");
+  };
+
+  const loadTracker = async () => {
+    setTrackerLoading(true);
+    setTrackerError("");
+    try {
+      const { data } = await getAdminRideTracker();
+      setTrackerList(data.data || []);
+    } catch (err) {
+      if (err.response?.status === 401 || err.response?.status === 403) {
+        handleLogout();
+      } else {
+        setTrackerError(err.response?.data?.message || "Could not load live rides tracker.");
+      }
+    } finally {
+      setTrackerLoading(false);
+    }
+  };
+
+  const loadUserRides = async (userId) => {
+    setUserRidesLoading(true);
+    try {
+      const { data } = await getAdminUserRides(userId);
+      setUserRides(data.data);
+    } catch (err) {
+      setUserRides(null);
+    } finally {
+      setUserRidesLoading(false);
+    }
   };
 
   const loadUsers = async (term) => {
@@ -116,6 +170,7 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     loadStats();
+    loadTracker();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -138,6 +193,7 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     if (tab === "verifications") load(filter);
+    if (tab === "tracker") loadTracker();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, filter]);
 
@@ -233,9 +289,10 @@ export default function AdminDashboard() {
           </button>
         </div>
 
-        <div className="mb-6 flex gap-2">
+        <div className="mb-6 flex flex-wrap gap-2">
           {tabButton("verifications", "ID Verification", <ShieldCheck size={15} />)}
           {tabButton("users", "Users", <Users size={15} />)}
+          {tabButton("tracker", "Live Ride Tracker", <Car size={15} />)}
         </div>
 
         <div className="mb-6 flex flex-wrap gap-4">
@@ -254,6 +311,34 @@ export default function AdminDashboard() {
             </div>
             <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-brand-50 text-brand-600">
               <Users size={22} />
+            </div>
+          </div>
+
+          <div className="flex flex-1 min-w-[200px] items-center justify-between gap-4 rounded-2xl border border-slate-100 bg-white p-5 shadow-card">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Active Live Trips
+              </p>
+              <p className="mt-1 text-3xl font-extrabold text-blue-600">
+                {trackerList.filter((t) => t.tripStatus !== "completed").length}
+              </p>
+            </div>
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
+              <Car size={22} />
+            </div>
+          </div>
+
+          <div className="flex flex-1 min-w-[200px] items-center justify-between gap-4 rounded-2xl border border-slate-100 bg-white p-5 shadow-card">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Completed Trips
+              </p>
+              <p className="mt-1 text-3xl font-extrabold text-emerald-600">
+                {trackerList.filter((t) => t.tripStatus === "completed").length}
+              </p>
+            </div>
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600">
+              <BadgeCheck size={22} />
             </div>
           </div>
         </div>
@@ -363,7 +448,7 @@ export default function AdminDashboard() {
               </div>
             )}
           </>
-        ) : (
+        ) : tab === "users" ? (
           <>
             <div className="mb-4 flex flex-wrap items-center gap-3">
               <div className="relative flex-1 min-w-[220px]">
@@ -457,7 +542,7 @@ export default function AdminDashboard() {
                           </span>
                         )}
                         <button
-                          onClick={() => setSelectedUser(student)}
+                          onClick={() => { setSelectedUser(student); setUserRides(null); }}
                           className="flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:border-slate-300"
                         >
                           <Eye size={14} />
@@ -484,6 +569,171 @@ export default function AdminDashboard() {
                     </div>
                   );
                 })}
+              </div>
+            )}
+          </>
+        ) : (
+          <>
+            {/* Live Ride Tracker Tab View */}
+            <div className="mb-4 space-y-3 rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                {/* Filter Chips */}
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    { id: "active", label: "Active Trips" },
+                    { id: "upcoming", label: "Upcoming" },
+                    { id: "ongoing", label: "Ongoing" },
+                    { id: "completed", label: "Completed" },
+                    { id: "all", label: "All Rides" },
+                  ].map((filterTab) => {
+                    const active = trackerFilter === filterTab.id;
+                    const count =
+                      filterTab.id === "active"
+                        ? trackerList.filter((t) => t.tripStatus !== "completed").length
+                        : filterTab.id === "all"
+                        ? trackerList.length
+                        : trackerList.filter((t) => t.tripStatus === filterTab.id).length;
+
+                    return (
+                      <button
+                        key={filterTab.id}
+                        onClick={() => setTrackerFilter(filterTab.id)}
+                        className={`flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-bold transition ${
+                          active
+                            ? "bg-blue-600 text-white shadow-xs"
+                            : "bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-900"
+                        }`}
+                      >
+                        {filterTab.label}
+                        <span
+                          className={`rounded-full px-1.5 py-0.2 text-[10px] ${
+                            active ? "bg-blue-500 text-white" : "bg-slate-200 text-slate-700"
+                          }`}
+                        >
+                          {count}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <button
+                  onClick={loadTracker}
+                  className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:border-slate-300"
+                >
+                  Refresh
+                </button>
+              </div>
+            </div>
+
+            {trackerError && (
+              <div className="mb-4 rounded-lg bg-rose-50 px-4 py-2.5 text-sm font-medium text-rose-600">
+                {trackerError}
+              </div>
+            )}
+
+            {trackerLoading ? (
+              <div className="flex min-h-[300px] items-center justify-center">
+                <Loader2 className="animate-spin text-blue-600" size={28} />
+              </div>
+            ) : trackerList.length === 0 ? (
+              <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-white px-6 py-16 text-center shadow-card">
+                <Car size={30} className="text-slate-300" />
+                <p className="mt-3 text-sm font-bold text-slate-700">No active trips being tracked</p>
+                <p className="mt-1 text-xs text-slate-400">When students post and start rides, they will appear here in real time.</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {trackerList
+                  .filter((entry) => {
+                    if (trackerFilter === "active") return entry.tripStatus !== "completed";
+                    if (trackerFilter === "all") return true;
+                    return entry.tripStatus === trackerFilter;
+                  })
+                  .map((entry) => {
+                    const meta = TRIP_META[entry.tripStatus] || TRIP_META.upcoming;
+                    const ride = entry.ride;
+                    if (!ride) return null;
+                    return (
+                      <div
+                        key={entry._id}
+                        className="overflow-hidden rounded-2xl border border-slate-100 bg-white p-5 shadow-card transition-shadow hover:shadow-md"
+                      >
+                        <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 pb-4">
+                          <div>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span
+                                title={ride.pickup}
+                                className="flex items-center gap-1.5 rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-blue-700"
+                              >
+                                <MapPin size={11} className="shrink-0" />
+                                {shortLabel(ride.pickup)}
+                              </span>
+                              <Navigation size={13} className="shrink-0 text-slate-300" />
+                              <span
+                                title={ride.dropoff}
+                                className="flex items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-700"
+                              >
+                                <MapPin size={11} className="shrink-0" />
+                                {shortLabel(ride.dropoff)}
+                              </span>
+                            </div>
+                            <div className="mt-2.5 flex flex-wrap items-center gap-3 text-xs text-slate-500">
+                              <span className="flex items-center gap-1 font-semibold text-slate-700">
+                                <Clock3 size={13} className="text-blue-600" />
+                                Departure: {formatTime12Hour(ride.departureTime)}
+                              </span>
+                              <span>·</span>
+                              <span>Seats: {ride.seats}</span>
+                              <span>·</span>
+                              <span>Fare: {ride.charge > 0 ? `৳${ride.charge}` : "Free"}</span>
+                            </div>
+                          </div>
+
+                          <span className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-bold ${meta.classes}`}>
+                            <span className={`h-2 w-2 rounded-full ${meta.dot}`} />
+                            {meta.label}
+                          </span>
+                        </div>
+
+                        {/* Driver & Passenger Details */}
+                        <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 text-xs">
+                          {/* Driver Info */}
+                          <div className="rounded-xl bg-slate-50 p-3">
+                            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Driver</p>
+                            <div className="mt-1 flex items-center gap-2.5">
+                              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-600 font-bold text-white">
+                                {ride.poster?.name?.charAt(0) || "D"}
+                              </div>
+                              <div>
+                                <p className="font-bold text-slate-800">{ride.poster?.name}</p>
+                                <p className="text-[11px] text-slate-500">{ride.poster?.studentId} · {ride.poster?.phone || ride.poster?.universityEmail}</p>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Passengers Info */}
+                          <div className="rounded-xl bg-slate-50 p-3">
+                            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                              Accepted Passengers ({entry.passengers?.length || 0})
+                            </p>
+                            {!entry.passengers || entry.passengers.length === 0 ? (
+                              <p className="mt-1.5 text-[11px] text-slate-400">No passengers booked yet</p>
+                            ) : (
+                              <div className="mt-1 space-y-1.5">
+                                {entry.passengers.map((p) => (
+                                  <div key={p._id} className="flex items-center justify-between text-[11px]">
+                                    <span className="font-semibold text-slate-700">{p.rider?.name} ({p.seats} seat)</span>
+                                    <span className="text-slate-400">{p.rider?.phone || p.rider?.studentId}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
               </div>
             )}
           </>
@@ -699,6 +949,87 @@ export default function AdminDashboard() {
                     <InfoRow label="Address" value={selectedUser.localGuardian?.address} />
                   </DetailBlock>
                 )}
+
+              {/* Student Ride History Section */}
+              <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+                <div className="flex items-center justify-between">
+                  <p className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-slate-700">
+                    <History size={14} className="text-blue-600" />
+                    Student Ride History
+                  </p>
+                  {!userRides && (
+                    <button
+                      onClick={() => loadUserRides(selectedUser._id)}
+                      disabled={userRidesLoading}
+                      className="flex items-center gap-1 rounded-lg bg-blue-600 px-3 py-1 text-xs font-bold text-white shadow-xs transition hover:bg-blue-700 disabled:opacity-60"
+                    >
+                      {userRidesLoading ? <Loader2 size={12} className="animate-spin" /> : <Eye size={12} />}
+                      Load ride history
+                    </button>
+                  )}
+                </div>
+
+                {userRides && (
+                  <div className="mt-3 space-y-3">
+                    <div className="flex gap-2 border-b border-slate-200 pb-2">
+                      <button
+                        onClick={() => setUserRidesView("driver")}
+                        className={`rounded-lg px-2.5 py-1 text-xs font-bold transition ${
+                          userRidesView === "driver" ? "bg-blue-600 text-white" : "text-slate-600 hover:bg-slate-200"
+                        }`}
+                      >
+                        As Driver ({userRides.asDriver?.length || 0})
+                      </button>
+                      <button
+                        onClick={() => setUserRidesView("passenger")}
+                        className={`rounded-lg px-2.5 py-1 text-xs font-bold transition ${
+                          userRidesView === "passenger" ? "bg-blue-600 text-white" : "text-slate-600 hover:bg-slate-200"
+                        }`}
+                      >
+                        As Passenger ({userRides.asPassenger?.length || 0})
+                      </button>
+                    </div>
+
+                    {userRidesView === "driver" ? (
+                      userRides.asDriver?.length === 0 ? (
+                        <p className="text-xs text-slate-400">No rides posted by this student yet.</p>
+                      ) : (
+                        <div className="max-h-48 space-y-2 overflow-y-auto">
+                          {userRides.asDriver.map((r) => (
+                            <div key={r._id} className="rounded-lg border border-slate-200 bg-white p-2.5 text-xs shadow-2xs">
+                              <div className="flex items-center justify-between font-semibold text-slate-800">
+                                <span>{r.pickup} → {r.dropoff}</span>
+                                <span className="text-blue-600 font-bold">{formatTime12Hour(r.departureTime)}</span>
+                              </div>
+                              <div className="mt-1 flex items-center justify-between text-[11px] text-slate-400">
+                                <span>{formatDate(r.createdAt)}</span>
+                                <span>Passengers: {r.passengers?.length || 0} / {r.seats} seats</span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )
+                    ) : userRides.asPassenger?.length === 0 ? (
+                      <p className="text-xs text-slate-400">No rides booked by this student yet.</p>
+                    ) : (
+                      <div className="max-h-48 space-y-2 overflow-y-auto">
+                        {userRides.asPassenger.map((r) => (
+                          <div key={r._id} className="rounded-lg border border-slate-200 bg-white p-2.5 text-xs shadow-2xs">
+                            <div className="flex items-center justify-between font-semibold text-slate-800">
+                              <span>{r.pickup} → {r.dropoff}</span>
+                              <span className="capitalize font-bold text-slate-600">{r.bookingStatus}</span>
+                            </div>
+                            <div className="mt-1 flex items-center justify-between text-[11px] text-slate-400">
+                              <span>Driver: {r.driver?.name || "Student"} ({r.driver?.phone || "—"})</span>
+                              <span>{formatDate(r.createdAt)}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
 
             <div className="flex flex-wrap justify-end gap-3 border-t border-slate-100 px-6 py-4">
@@ -720,7 +1051,10 @@ export default function AdminDashboard() {
                 </button>
               )}
               <button
-                onClick={() => setSelectedUser(null)}
+                onClick={() => {
+                  setSelectedUser(null);
+                  setUserRides(null);
+                }}
                 className="rounded-lg bg-slate-800 px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-900"
               >
                 Close

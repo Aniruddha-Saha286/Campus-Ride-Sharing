@@ -124,6 +124,148 @@ const reviewVerification = asyncHandler(async (req, res) => {
   res.json({ success: true, data: student });
 });
 
+const getAdminRideTracker = asyncHandler(async (req, res) => {
+  const Ride = require("../models/Ride");
+  const Booking = require("../models/Booking");
+  const RideStatus = require("../models/RideStatus");
+
+  // 1. Find all open rides and ensure a RideStatus doc exists for each (upsert = no duplicate key errors)
+  const openRides = await Ride.find({ status: "open" }).lean();
+  for (const r of openRides) {
+    await RideStatus.findOneAndUpdate(
+      { ride: r._id },
+      { $setOnInsert: { ride: r._id, tripStatus: "upcoming", timeline: [{ status: "upcoming", timestamp: r.createdAt || new Date() }] } },
+      { upsert: true }
+    );
+  }
+
+  // 2. Fetch all statuses for active / non-cancelled rides
+  const statuses = await RideStatus.find()
+    .populate({
+      path: "ride",
+      populate: { path: "poster", select: "name studentId phone universityEmail profilePhoto department year" },
+    })
+    .populate("timeline.updatedBy", "name profilePhoto")
+    .sort({ updatedAt: -1 })
+    .lean();
+
+  const validStatuses = statuses.filter((s) => s.ride && s.ride.status !== "cancelled");
+  const rideIds = validStatuses.map((s) => s.ride._id);
+
+  const acceptedBookings = await Booking.find({
+    ride: { $in: rideIds },
+    status: "accepted",
+  })
+    .populate("rider", "name studentId phone universityEmail profilePhoto department year")
+    .lean();
+
+  const bookingsByRide = new Map();
+  acceptedBookings.forEach((b) => {
+    const key = String(b.ride);
+    if (!bookingsByRide.has(key)) bookingsByRide.set(key, []);
+    bookingsByRide.get(key).push(b);
+  });
+
+  const data = validStatuses.map((s) => ({
+    _id: s._id,
+    tripStatus: s.tripStatus,
+    timeline: s.timeline,
+    updatedAt: s.updatedAt,
+    createdAt: s.createdAt,
+    ride: s.ride,
+    passengers: (bookingsByRide.get(String(s.ride._id)) || []).map((b) => ({
+      _id: b._id,
+      rider: b.rider,
+      seats: b.seats,
+      paymentStatus: b.paymentStatus,
+    })),
+  }));
+
+  res.json({ success: true, data });
+});
+
+const getUserRideHistory = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  if (!mongoose.isValidObjectId(id)) {
+    return res.status(400).json({ success: false, message: "Invalid student ID" });
+  }
+
+  const student = await Student.findById(id);
+  if (!student) return res.status(404).json({ success: false, message: "Student not found" });
+
+  const Ride = require("../models/Ride");
+  const Booking = require("../models/Booking");
+
+  const postedRides = await Ride.find({ poster: student._id })
+    .sort({ createdAt: -1 })
+    .lean();
+
+  const postedRideIds = postedRides.map((r) => r._id);
+  const acceptedBookings = await Booking.find({
+    ride: { $in: postedRideIds },
+    status: "accepted",
+  })
+    .populate("rider", "name studentId phone department year")
+    .lean();
+
+  const bookingsMap = new Map();
+  acceptedBookings.forEach((b) => {
+    const key = String(b.ride);
+    if (!bookingsMap.has(key)) bookingsMap.set(key, []);
+    bookingsMap.get(key).push(b);
+  });
+
+  const asDriver = postedRides.map((r) => ({
+    _id: r._id,
+    pickup: r.pickup,
+    dropoff: r.dropoff,
+    departureTime: r.departureTime,
+    seats: r.seats,
+    charge: r.charge,
+    status: r.status,
+    createdAt: r.createdAt,
+    passengers: bookingsMap.get(String(r._id)) || [],
+  }));
+
+  const passengerBookings = await Booking.find({ rider: student._id })
+    .populate({
+      path: "ride",
+      populate: { path: "poster", select: "name studentId phone department year" },
+    })
+    .sort({ createdAt: -1 })
+    .lean();
+
+  const asPassenger = passengerBookings
+    .filter((b) => b.ride)
+    .map((b) => ({
+      _id: b._id,
+      rideId: b.ride._id,
+      pickup: b.ride.pickup,
+      dropoff: b.ride.dropoff,
+      departureTime: b.ride.departureTime,
+      seats: b.seats,
+      charge: b.ride.charge,
+      bookingStatus: b.status,
+      paymentStatus: b.paymentStatus,
+      driver: b.ride.poster,
+      createdAt: b.createdAt,
+    }));
+
+  res.json({
+    success: true,
+    data: {
+      student: {
+        _id: student._id,
+        name: student.name,
+        studentId: student.studentId,
+        universityEmail: student.universityEmail,
+      },
+      asDriver,
+      asPassenger,
+    },
+  });
+});
+
 module.exports = {
   adminLogin,
   listVerifications,
@@ -133,4 +275,6 @@ module.exports = {
   getStats,
   banStudent,
   unbanStudent,
+  getAdminRideTracker,
+  getUserRideHistory,
 };

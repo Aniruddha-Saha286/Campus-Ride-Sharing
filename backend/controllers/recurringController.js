@@ -107,6 +107,7 @@ const createFromRide = asyncHandler(async (req, res) => {
     dropoffLng: ride.dropoffLng ?? null,
     departureTime: ride.departureTime,
     seats: ride.seats,
+    charge: ride.charge ?? 0,
     notes: ride.notes || "",
     generatedForDate: new Date(),
   });

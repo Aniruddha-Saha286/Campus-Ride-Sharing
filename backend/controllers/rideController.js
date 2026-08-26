@@ -154,8 +154,10 @@ const getMyRides = asyncHandler(async (req, res) => {
     .populate({ path: "ride", populate: { path: "poster", select: publicPosterSelect } })
     .sort({ createdAt: -1 });
 
+  const activeRequested = requested.filter((b) => b.ride && b.ride.status === "open");
+
   const paymentByRide = new Map();
-  for (const booking of requested) {
+  for (const booking of activeRequested) {
     if (booking.status !== "accepted" || !booking.ride || !booking.ride.charge) continue;
     const payment = await RidePayment.findOne({ ride: booking.ride._id, payer: me._id });
     if (payment) {
@@ -164,7 +166,7 @@ const getMyRides = asyncHandler(async (req, res) => {
     }
   }
 
-  const requestedData = requested.map((b) => {
+  const requestedData = activeRequested.map((b) => {
     const payment = paymentByRide.get(String(b.ride ? b.ride._id : ""));
     return {
     _id: b._id,
@@ -256,6 +258,7 @@ const requestSeat = asyncHandler(async (req, res) => {
       existing.settledByUserId = null;
       existing.settledAt = null;
       existing.settledManually = false;
+      existing.cancelReason = null;
       await existing.save();
       return res.status(201).json({ success: true, data: existing });
     }
@@ -372,8 +375,8 @@ const cancelRequest = asyncHandler(async (req, res) => {
     return res.status(403).json({ success: false, message: "Only the rider can cancel their own request" });
   }
 
-  if (!["pending", "accepted"].includes(booking.status)) {
-    return res.status(400).json({ success: false, message: "Only a pending or accepted request can be cancelled" });
+  if (!["pending", "accepted", "declined"].includes(booking.status)) {
+    return res.status(400).json({ success: false, message: "Only an active or declined request can be cancelled" });
   }
 
   const { reason } = req.body || {};
@@ -457,8 +460,10 @@ const cancelRide = asyncHandler(async (req, res) => {
     return res.status(400).json({ success: false, message: "This ride is already cancelled" });
   }
 
-
-  await Booking.updateMany({ ride: ride._id, status: { $in: ["pending", "accepted"] } }, { status: "cancelled" });
+  await Booking.updateMany(
+    { ride: ride._id, status: { $in: ["pending", "accepted", "declined"] } },
+    { $set: { status: "cancelled", cancelReason: "Ride cancelled by driver" } }
+  );
 
   for (const payment of payments) {
     if (TERMINAL_STATUSES.includes(payment.status)) continue;
@@ -492,4 +497,137 @@ const cancelRide = asyncHandler(async (req, res) => {
   res.json({ success: true, data: claimed, cancellationFine });
 });
 
-module.exports = { createRide, listRides, getMyRides, requestSeat, respondToRequest, cancelRequest, cancelRide };
+const updateRide = asyncHandler(async (req, res) => {
+  const { rideId } = req.params;
+  if (!mongoose.isValidObjectId(rideId)) {
+    return res.status(400).json({ success: false, message: "Invalid ride ID" });
+  }
+
+  const me = await findMe(req);
+  if (!me) return res.status(404).json({ success: false, message: "Profile not found" });
+
+  const ride = await Ride.findById(rideId);
+  if (!ride) return res.status(404).json({ success: false, message: "Ride not found" });
+
+  if (String(ride.poster) !== String(me._id)) {
+    return res.status(403).json({ success: false, message: "Only the poster can edit this ride offer" });
+  }
+
+  if (ride.status === "cancelled") {
+    return res.status(400).json({ success: false, message: "Cannot edit a cancelled ride offer" });
+  }
+  if (ride.status === "completed") {
+    return res.status(400).json({ success: false, message: "Cannot edit a completed ride offer" });
+  }
+
+  const acceptedBookings = await Booking.find({ ride: ride._id, status: "accepted" });
+  const acceptedSeats = acceptedBookings.reduce((sum, b) => sum + (b.seats || 1), 0);
+
+  if (acceptedSeats >= ride.seats) {
+    return res.status(400).json({ success: false, message: "Cannot edit a fully booked ride offer" });
+  }
+
+  const { pickup, dropoff, departureTime, seats, notes, pickupLat, pickupLng, dropoffLat, dropoffLng, charge } = req.body || {};
+
+  if (acceptedSeats > 0) {
+    const isPickupChanged = pickup !== undefined && String(pickup).trim() !== ride.pickup;
+    const isDropoffChanged = dropoff !== undefined && String(dropoff).trim() !== ride.dropoff;
+    if (isPickupChanged || isDropoffChanged) {
+      return res.status(400).json({
+        success: false,
+        message: "Cannot change pickup or drop-off location once a seat request has been accepted",
+      });
+    }
+
+    const isTimeChanged = departureTime !== undefined && departureTime !== ride.departureTime;
+    if (isTimeChanged) {
+      return res.status(400).json({
+        success: false,
+        message: "Cannot change departure time once a seat request has been accepted",
+      });
+    }
+
+    const isChargeChanged =
+      charge !== undefined &&
+      charge !== null &&
+      charge !== "" &&
+      roundMoney(Number(charge)) !== roundMoney(ride.charge || 0);
+    if (isChargeChanged) {
+      return res.status(400).json({
+        success: false,
+        message: "Cannot change ride fare once a seat request has been accepted",
+      });
+    }
+  }
+
+  if (pickup !== undefined) {
+    const trimmed = String(pickup).trim();
+    if (!trimmed) return res.status(400).json({ success: false, message: "Pickup location cannot be empty" });
+    ride.pickup = trimmed;
+  }
+
+  if (dropoff !== undefined) {
+    const trimmed = String(dropoff).trim();
+    if (!trimmed) return res.status(400).json({ success: false, message: "Drop-off location cannot be empty" });
+    ride.dropoff = trimmed;
+  }
+
+  if (departureTime !== undefined) {
+    if (!departureTime || !TIME_REGEX.test(departureTime)) {
+      return res.status(400).json({ success: false, message: "Departure time must be in HH:MM (24-hour) format" });
+    }
+    ride.departureTime = departureTime;
+  }
+
+  if (seats !== undefined) {
+    const seatCount = Number(seats);
+    if (!Number.isInteger(seatCount) || seatCount < 1 || seatCount > 6) {
+      return res.status(400).json({ success: false, message: "Seats must be a whole number between 1 and 6" });
+    }
+    if (seatCount < acceptedSeats) {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot reduce seats below already accepted seats (${acceptedSeats})`,
+      });
+    }
+    ride.seats = seatCount;
+  }
+
+  if (charge !== undefined && charge !== null && charge !== "") {
+    const chargeValue = Number(charge);
+    if (!Number.isFinite(chargeValue) || chargeValue < 0) {
+      return res.status(400).json({ success: false, message: "Ride charge must be a non-negative number" });
+    }
+    ride.charge = roundMoney(chargeValue);
+  }
+
+  if (notes !== undefined) {
+    ride.notes = notes ? String(notes).trim() : "";
+  }
+
+  if (pickupLat !== undefined) ride.pickupLat = pickupLat ?? null;
+  if (pickupLng !== undefined) ride.pickupLng = pickupLng ?? null;
+  if (dropoffLat !== undefined) ride.dropoffLat = dropoffLat ?? null;
+  if (dropoffLng !== undefined) ride.dropoffLng = dropoffLng ?? null;
+
+  await ride.save();
+
+  const populated = await Ride.findById(ride._id).populate("poster", publicPosterSelect);
+
+  res.json({
+    success: true,
+    data: populated,
+    message: "Ride offer updated successfully",
+  });
+});
+
+module.exports = {
+  createRide,
+  listRides,
+  getMyRides,
+  requestSeat,
+  respondToRequest,
+  cancelRequest,
+  cancelRide,
+  updateRide,
+};

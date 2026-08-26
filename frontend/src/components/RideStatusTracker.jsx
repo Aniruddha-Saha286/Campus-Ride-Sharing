@@ -24,7 +24,7 @@ import {
   updateRideStatus,
 } from "../api/rideStatusApi";
 import usePolling from "../hooks/usePolling";
-import { TRIP_META, NEXT_ACTION, TIMELINE_COLORS } from "../utils/rideStatusConstants";
+import { TRIP_META, NEXT_ACTION, TIMELINE_COLORS, formatTime12Hour } from "../utils/rideStatusConstants";
 
 const isCoord = (s) => /^-?\d+\.\d+$/.test(s.trim());
 
@@ -250,8 +250,8 @@ export default function RideStatusTracker() {
                 const Icon = meta.icon;
                 const isExpanded = !!expanded[entry._id];
                 const action = NEXT_ACTION[entry.tripStatus];
-                const canUpdate = entry.ride.status === "open";
                 const isDriver = entry.role === "poster";
+                const canUpdate = entry.ride.status === "open" && entry.tripStatus !== "completed" && isDriver;
 
                 return (
                   <div
@@ -275,7 +275,7 @@ export default function RideStatusTracker() {
 
                             <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-0.5 text-[11px] font-semibold text-slate-600">
                               <Clock3 size={11} className="text-brand-500" />
-                              {entry.ride.departureTime}
+                              {formatTime12Hour(entry.ride.departureTime)}
                             </span>
 
                             <span
@@ -385,11 +385,11 @@ export default function RideStatusTracker() {
                           <p className="mb-3 text-xs font-bold uppercase tracking-wide text-slate-500 flex items-center gap-1.5">
                             <Clock3 size={13} /> Live Timestamp Audit Log
                           </p>
-                          {entry.timeline.length === 0 ? (
+                          {(entry.timeline || []).length === 0 ? (
                             <p className="text-xs text-slate-400">No events logged yet.</p>
                           ) : (
                             <div className="space-y-2 rounded-xl bg-white p-4 border border-slate-100">
-                              {entry.timeline.map((step, i) => {
+                              {(entry.timeline || []).map((step, i) => {
                                 const stepMeta = TRIP_META[step.status] || TRIP_META.upcoming;
                                 return (
                                   <div key={i} className="flex items-start gap-3 text-xs">

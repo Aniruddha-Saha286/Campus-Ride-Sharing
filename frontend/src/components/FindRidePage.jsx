@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { listRides, requestSeat } from "../api/rideApi";
 import usePolling from "../hooks/usePolling";
+import { formatTime12Hour } from "../utils/rideStatusConstants";
 
 const formatTaka = (v) =>
   `৳${Number(v || 0).toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
@@ -75,7 +76,7 @@ function RideCard({ ride, onRequest, busy }) {
             <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5">
               <span className="flex items-center gap-1.5 text-xs text-slate-500">
                 <Clock3 size={13} className="text-brand-400" />
-                <span className="font-semibold text-slate-700">{ride.departureTime}</span>
+                <span className="font-semibold text-slate-700">{formatTime12Hour(ride.departureTime)}</span>
               </span>
               <span className="flex items-center gap-1.5 text-xs text-slate-500">
                 <Users size={13} className="text-brand-400" />
@@ -195,7 +196,7 @@ function RideCard({ ride, onRequest, busy }) {
             </div>
             <div>
               <p className="mb-0.5 text-[10px] font-bold uppercase tracking-widest text-slate-400">Departure</p>
-              <p className="text-sm font-semibold text-slate-700">{ride.departureTime}</p>
+              <p className="text-sm font-semibold text-slate-700">{formatTime12Hour(ride.departureTime)}</p>
             </div>
           </div>
         </div>
@@ -204,9 +205,22 @@ function RideCard({ ride, onRequest, busy }) {
   );
 }
 
+const QUICK_FILTERS = [
+  { id: "all", label: "All Rides" },
+  { id: "free", label: "Free Rides" },
+  { id: "badda", label: "Merul Badda", query: "Badda" },
+  { id: "mohakhali", label: "Mohakhali", query: "Mohakhali" },
+  { id: "dhanmondi", label: "Dhanmondi", query: "Dhanmondi" },
+  { id: "mirpur", label: "Mirpur", query: "Mirpur" },
+  { id: "uttara", label: "Uttara", query: "Uttara" },
+  { id: "gulshan", label: "Gulshan", query: "Gulshan" },
+];
+
 export default function FindRidePage() {
   const [browse, setBrowse] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [activeFilter, setActiveFilter] = useState("all");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState("");
   const [success, setSuccess] = useState("");
@@ -240,16 +254,46 @@ export default function FindRidePage() {
     }
   };
 
+  // Filtered rides calculation
+  const filteredRides = browse.filter((ride) => {
+    const q = searchTerm.trim().toLowerCase();
+    
+    // Quick filter check
+    if (activeFilter === "free" && ride.charge > 0) return false;
+    if (activeFilter !== "all" && activeFilter !== "free") {
+      const filterObj = QUICK_FILTERS.find((f) => f.id === activeFilter);
+      if (filterObj && filterObj.query) {
+        const queryTerm = filterObj.query.toLowerCase();
+        const matchesPickup = (ride.pickup || "").toLowerCase().includes(queryTerm);
+        const matchesDropoff = (ride.dropoff || "").toLowerCase().includes(queryTerm);
+        if (!matchesPickup && !matchesDropoff) return false;
+      }
+    }
+
+    // Search query check
+    if (!q) return true;
+
+    const matchesPickup = (ride.pickup || "").toLowerCase().includes(q);
+    const matchesDropoff = (ride.dropoff || "").toLowerCase().includes(q);
+    const matchesDriver = (ride.poster?.name || "").toLowerCase().includes(q);
+    const matchesDept = (ride.poster?.department || "").toLowerCase().includes(q);
+    const matchesNotes = (ride.notes || "").toLowerCase().includes(q);
+
+    return matchesPickup || matchesDropoff || matchesDriver || matchesDept || matchesNotes;
+  });
+
   return (
     <div className="w-full max-w-none px-6 py-10 lg:px-10">
       <div className="mx-auto w-full max-w-[1600px]">
+        {/* Top Header */}
         <div className="mb-6">
-          <h1 className="text-2xl font-extrabold tracking-tight text-slate-900">Find Ride</h1>
+          <h1 className="text-2xl font-black tracking-tight text-slate-900">Find Ride</h1>
           <p className="mt-1 text-sm text-slate-500">
-            Browse open rides near campus. View on map or expand details before requesting.
+            Browse available rides shared by verified students. Search by pickup, destination, or driver.
           </p>
         </div>
 
+        {/* Alerts */}
         {error && (
           <div className="mb-4 rounded-xl bg-rose-50 px-4 py-3 text-sm font-medium text-rose-600 border border-rose-100">
             {error}
@@ -261,9 +305,58 @@ export default function FindRidePage() {
           </div>
         )}
 
+        {/* Search Bar & Quick Filters */}
+        <div className="mb-6 space-y-3 rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm">
+          {/* Main Search Input */}
+          <div className="relative flex items-center">
+            <Search size={18} className="absolute left-3.5 text-slate-400" />
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Search by pickup, destination, or driver name..."
+              className="w-full rounded-xl border border-slate-200 bg-slate-50/70 pl-10 pr-10 py-2.5 text-sm font-medium text-slate-800 outline-none transition focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10"
+            />
+            {searchTerm && (
+              <button
+                type="button"
+                onClick={() => setSearchTerm("")}
+                className="absolute right-3 rounded-lg p-1 text-slate-400 transition hover:bg-slate-200 hover:text-slate-700 text-xs font-bold"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+
+          {/* Quick Filter Chips */}
+          <div className="flex flex-wrap items-center gap-1.5 pt-1">
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-400 mr-1">
+              Filter:
+            </span>
+            {QUICK_FILTERS.map((f) => {
+              const isSelected = activeFilter === f.id;
+              return (
+                <button
+                  key={f.id}
+                  type="button"
+                  onClick={() => setActiveFilter(f.id)}
+                  className={`rounded-lg px-2.5 py-1 text-xs font-bold transition-all ${
+                    isSelected
+                      ? "bg-blue-600 text-white shadow-xs"
+                      : "bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-900"
+                  }`}
+                >
+                  {f.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Ride List */}
         {loading ? (
           <div className="flex min-h-[300px] items-center justify-center">
-            <Loader2 className="animate-spin text-brand-500" size={26} />
+            <Loader2 className="animate-spin text-blue-600" size={26} />
           </div>
         ) : browse.length === 0 ? (
           <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-white px-6 py-20 text-center shadow-card">
@@ -271,12 +364,43 @@ export default function FindRidePage() {
             <p className="mt-3 text-sm font-semibold text-slate-500">No open rides right now</p>
             <p className="mt-1 text-xs text-slate-400">Check back soon, or post your own ride from the sidebar.</p>
           </div>
+        ) : filteredRides.length === 0 ? (
+          <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-white px-6 py-16 text-center shadow-card">
+            <Search size={28} className="text-slate-300" />
+            <p className="mt-3 text-sm font-bold text-slate-700">No rides matched your search</p>
+            <p className="mt-1 text-xs text-slate-500">
+              Try searching with different keywords or clear your active filters.
+            </p>
+            <button
+              onClick={() => {
+                setSearchTerm("");
+                setActiveFilter("all");
+              }}
+              className="mt-4 rounded-xl bg-blue-600 px-4 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-blue-700"
+            >
+              Clear filters
+            </button>
+          </div>
         ) : (
           <div className="space-y-4">
-            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">
-              {browse.length} ride{browse.length === 1 ? "" : "s"} available
-            </p>
-            {browse.map((ride) => (
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                Showing {filteredRides.length} of {browse.length} available ride{browse.length === 1 ? "" : "s"}
+              </p>
+              {(searchTerm || activeFilter !== "all") && (
+                <button
+                  onClick={() => {
+                    setSearchTerm("");
+                    setActiveFilter("all");
+                  }}
+                  className="text-xs font-bold text-blue-600 hover:underline"
+                >
+                  Reset all filters
+                </button>
+              )}
+            </div>
+
+            {filteredRides.map((ride) => (
               <RideCard
                 key={ride._id}
                 ride={ride}

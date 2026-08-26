@@ -336,6 +336,7 @@ export default function PaymentRequests() {
             </div>
           </div>
         )}
+
         {data.length === 0 ? (
           <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-white px-6 py-14 text-center shadow-card">
             <Inbox size={28} className="text-slate-300" />

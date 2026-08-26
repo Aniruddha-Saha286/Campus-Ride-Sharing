@@ -154,54 +154,6 @@ const router = createBrowserRouter([
         element: <Banned />,
       },
       {
-        path: "/payments",
-        element: (
-          <RequireAuth>
-            <PaymentRequests />
-          </RequireAuth>
-        ),
-      },
-      {
-        path: "/payments/:id",
-        element: (
-          <RequireAuth>
-            <PaymentDetails />
-          </RequireAuth>
-        ),
-      },
-      {
-        path: "/rides/:rideId/payments",
-        element: (
-          <RequireAuth>
-            <RidePaymentManagement />
-          </RequireAuth>
-        ),
-      },
-      {
-        path: "/ride-payments/:paymentId",
-        element: (
-          <RequireAuth>
-            <RidePaymentDetails />
-          </RequireAuth>
-        ),
-      },
-      {
-        path: "/transactions",
-        element: (
-          <RequireAuth>
-            <TransactionHistory />
-          </RequireAuth>
-        ),
-      },
-      {
-        path: "/dues",
-        element: (
-          <RequireAuth>
-            <NetBalances />
-          </RequireAuth>
-        ),
-      },
-      {
         path: "/admin/login",
         element: (
           <RedirectIfAdmin>

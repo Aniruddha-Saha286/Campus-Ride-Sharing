@@ -1,21 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import {
-  ArrowLeft,
-  Loader2,
-  X,
-  BadgeCheck,
-  Wallet,
-  CreditCard,
-  HandCoins,
-  Receipt,
-  Check,
-  Download,
-  Clock3,
-  FileText,
-  CheckCircle2,
-  Hourglass,
-  Inbox,
+import {ArrowLeft,Loader2,X,BadgeCheck,Wallet,CreditCard,HandCoins,Receipt,Check,Download,Clock3,FileText,CheckCircle2,Hourglass,Inbox,
 } from "lucide-react";
 import {
   getPaymentRequest,

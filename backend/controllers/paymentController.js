@@ -34,7 +34,7 @@ const settlePayment = asyncHandler(async (req, res) => {
         paymentStatus: "SETTLED",
         settledBy: isPoster ? "RIDE_POSTER" : "RIDER",
         settledByUserId: me._id,
-        settledAt: Date.now(),
+        settledAt: new Date(),
         settledManually: true,
       },
     },

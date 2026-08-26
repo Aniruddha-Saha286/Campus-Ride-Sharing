@@ -92,3 +92,9 @@ export const unbanUser = (id) =>
 
 export const reviewVerification = (id, decision, note) =>
   adminClient.put(`/admin/verifications/${id}`, { decision, note });
+
+export const getAdminRideTracker = () =>
+  adminClient.get("/admin/rides/tracker");
+
+export const getAdminUserRides = (userId) =>
+  adminClient.get(`/admin/users/${userId}/rides`);
