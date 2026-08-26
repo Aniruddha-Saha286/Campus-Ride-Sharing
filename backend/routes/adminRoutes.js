@@ -11,6 +11,8 @@ const {
   getStats,
   banStudent,
   unbanStudent,
+  getAdminRideTracker,
+  getUserRideHistory,
 } = require("../controllers/adminController");
 
 router.post("/login", adminLogin);
@@ -21,5 +23,7 @@ router.put("/verifications/:id", protect, adminOnly, reviewVerification);
 router.get("/users", protect, adminOnly, listUsers);
 router.put("/users/:id/ban", protect, adminOnly, banStudent);
 router.put("/users/:id/unban", protect, adminOnly, unbanStudent);
+router.get("/rides/tracker", protect, adminOnly, getAdminRideTracker);
+router.get("/users/:id/rides", protect, adminOnly, getUserRideHistory);
 
 module.exports = router;

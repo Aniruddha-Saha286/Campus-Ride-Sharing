@@ -2,6 +2,9 @@ const Student = require("../models/Student");
 
 const idVerified = async (req, res, next) => {
   try {
+    if (req.user && (req.user.role === "admin" || req.user.admin)) {
+      return next();
+    }
     if (!req.user || !req.user.universityEmail) {
       return res.status(403).json({ success: false, message: "ID card verification required to access this feature" });
     }
