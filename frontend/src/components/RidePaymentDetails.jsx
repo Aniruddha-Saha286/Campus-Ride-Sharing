@@ -33,7 +33,6 @@ import {
   requestRefund,
   cancelRefundRequest,
   confirmRefund,
-  passengerRefundRequest,
   driverConfirmRefund,
   passengerCancelRide,
   getTransactionReceipt,
@@ -81,6 +80,7 @@ export default function RidePaymentDetails() {
   const [payment, setPayment] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
   const [busy, setBusy] = useState("");
   const [manualOpen, setManualOpen] = useState(false);
   const [manualAmount, setManualAmount] = useState("");
@@ -198,19 +198,6 @@ export default function RidePaymentDetails() {
     }
   };
 
-  const toggleDue = async () => {
-    setBusy("due");
-    setError("");
-    try {
-      await markDue(paymentId, !(payment?.manualStatus === "DUE"));
-      await load();
-    } catch (err) {
-      setError(err.response?.data?.message || "Could not update the due flag.");
-    } finally {
-      setBusy("");
-    }
-  };
-
   const submitDueAmount = async () => {
     setBusy("due-amount");
     setError("");
@@ -305,19 +292,6 @@ export default function RidePaymentDetails() {
     }
   };
 
-  const doPassengerRefundRequest = async () => {
-    setBusy("passenger-refund");
-    setError("");
-    try {
-      await passengerRefundRequest(paymentId);
-      await load();
-    } catch (err) {
-      setError(err.response?.data?.message || "Could not request the refund.");
-    } finally {
-      setBusy("");
-    }
-  };
-
   const doDriverConfirmRefund = async () => {
     setBusy("driver-confirm-refund");
     setError("");
@@ -336,15 +310,16 @@ export default function RidePaymentDetails() {
   const doPassengerCancel = async () => {
     setBusy("passenger-cancel");
     setError("");
+    setSuccess("");
     try {
       const res = await passengerCancelRide(paymentId);
       setCancelOpen(false);
       if (res.data?.refundPending) {
-        setError("Refund request sent to the driver. You will be refunded once the driver confirms.");
+        setSuccess("Refund request sent to the driver. You will be refunded once the driver confirms.");
       } else if (res.data?.fine > 0) {
-        setError(`Ride cancelled. Fine of ${formatTaka(res.data.fine)} has been applied.`);
+        setSuccess(`Ride cancelled. Fine of ${formatTaka(res.data.fine)} has been applied.`);
       } else {
-        setError("Ride cancelled.");
+        setSuccess("Ride cancelled successfully.");
       }
       await load();
     } catch (err) {
@@ -437,6 +412,13 @@ export default function RidePaymentDetails() {
         {error && (
           <div className="mb-5 rounded-lg bg-rose-50 px-4 py-2.5 text-sm font-medium text-rose-600">
             {error}
+          </div>
+        )}
+
+        {success && (
+          <div className="mb-5 rounded-lg bg-emerald-50 border border-emerald-200/80 px-4 py-2.5 text-sm font-semibold text-emerald-800 flex items-center gap-2">
+            <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
+            <span>{success}</span>
           </div>
         )}
 

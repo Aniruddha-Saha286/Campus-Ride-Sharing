@@ -8,17 +8,12 @@ export const getPaymentSummary = () => client.get("/ride-payments/summary");
 
 export const getDues = () => client.get("/ride-payments/dues");
 
-export const getNetBalances = () => client.get("/ride-payments/balances");
-
 export const getTransactionHistory = (params) =>
   client.get("/ride-payments/transactions", { params });
 
 export const getTransactionReceipt = (id) => client.get(`/ride-payments/transactions/${id}/receipt`);
 
 export const deleteTransaction = (id) => client.delete(`/ride-payments/transactions/${id}`);
-
-export const createManualDue = (receiver, amount, ride) =>
-  client.post("/ride-payments/manual-due", { receiver, amount, ride });
 
 export const recordManualPayment = (paymentId, amount, reference) =>
   client.post(`/ride-payments/${paymentId}/manual`, { amount, reference });
@@ -32,8 +27,8 @@ export const initiateBkashPayment = (paymentId, amount) =>
 export const verifyBkashPayment = (paymentId, paymentID, amount) =>
   client.post(`/ride-payments/${paymentId}/bkash/verify`, { paymentID, amount });
 
-export const selectPaymentMethod = (paymentId, method) =>
-  client.post(`/ride-payments/${paymentId}/method`, { method });
+export const selectPaymentMethod = (paymentId, method, trxId) =>
+  client.post(`/ride-payments/${paymentId}/method`, { method, trxId });
 
 export const submitManualStatus = (paymentId, status) =>
   client.post(`/ride-payments/${paymentId}/manual-status`, { status });

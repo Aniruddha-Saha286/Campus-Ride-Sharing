@@ -3,7 +3,7 @@ const Student = require("../models/Student");
 const PaymentRequest = require("../models/PaymentRequest");
 const Payment = require("../models/Payment");
 const asyncHandler = require("../utils/asyncHandler");
-const { findMe, publicPosterSelect, formatPublicStudent } = require("../utils/studentHelper");
+const { findMe, formatPublicStudent } = require("../utils/studentHelper");
 const { executePayment } = require("../utils/bkash");
 const { generateRequestCode } = require("../models/PaymentRequest");
 
@@ -268,8 +268,17 @@ const recordPayment = asyncHandler(async (req, res) => {
 
   let payment;
   if (method === "BKASH") {
-    const bkashResult = await executePayment({ amount, payerId: me._id });
-      payment = await Payment.create({
+    let bkashResult;
+    try {
+      bkashResult = await executePayment({ amount, payerId: me._id });
+    } catch (err) {
+      console.error("bKash payment execution failed:", err);
+      return res.status(502).json({
+        success: false,
+        message: "bKash payment could not be processed at this time. Please try again later.",
+      });
+    }
+    payment = await Payment.create({
       paymentRequest: request._id,
       paidBy: me._id,
       paidTo: request.requester,
