@@ -10,6 +10,7 @@ import {
   Settings2,
   ChevronDown,
   Building2,
+  Star,
 } from "lucide-react";
 import { getMyProfile } from "../api/api";
 import {
@@ -273,12 +274,20 @@ export default function CommuterMatches() {
                     {src ? <img src={src} alt={s.name} className="h-full w-full object-cover" /> : initial}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="flex items-center gap-1 text-sm font-bold text-slate-800">
-                      <span className="truncate">{s.name}</span>
-                      {s.idVerified && (
-                        <BadgeCheck size={14} className="shrink-0 fill-brand-600 text-white" />
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <p className="flex items-center gap-1 text-sm font-bold text-slate-800">
+                        <span className="truncate">{s.name}</span>
+                        {s.idVerified && (
+                          <BadgeCheck size={14} className="shrink-0 fill-brand-600 text-white" />
+                        )}
+                      </p>
+                      {s.rating && (
+                        <span className="inline-flex items-center gap-0.5 rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold text-amber-700 border border-amber-200/60 shadow-2xs">
+                          <Star size={9} className="fill-amber-400 text-amber-400" />
+                          {s.rating.average != null ? `${s.rating.average}` : "New"}
+                        </span>
                       )}
-                    </p>
+                    </div>
                     <p className="text-xs text-slate-500">
                       {s.department}, {s.year}
                     </p>

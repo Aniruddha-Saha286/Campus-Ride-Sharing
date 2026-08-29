@@ -34,7 +34,7 @@ const getMyRideStatuses = asyncHandler(async (req, res) => {
   const me = await findMe(req);
   if (!me) return res.status(404).json({ success: false, message: "Profile not found" });
 
-  const postedRides = await Ride.find({ poster: me._id, status: "open" }).select("_id");
+  const postedRides = await Ride.find({ poster: me._id, status: { $in: ["open", "completed"] } }).select("_id");
   const acceptedBookings = await Booking.find({
     rider: me._id,
     status: "accepted",
@@ -62,8 +62,7 @@ const getMyRideStatuses = asyncHandler(async (req, res) => {
 
   let statuses = await RideStatus.find({
     ride: { $in: rideIds },
-    tripStatus: { $ne: "completed" },
-  });
+  }).sort({ updatedAt: -1 });
 
   await RideStatus.populate(statuses, TIMELINE_POPULATE);
 
@@ -165,6 +164,22 @@ const updateRideStatus = asyncHandler(async (req, res) => {
   statusDoc.timeline.push({ status: tripStatus, timestamp: new Date(), updatedBy: me._id });
   await statusDoc.save();
 
+  // When a ride is marked completed, close the ride document so it no longer appears in active lists
+  if (tripStatus === "completed") {
+    await Ride.findByIdAndUpdate(ride._id, { $set: { status: "completed" } });
+
+    // Notify accepted passengers to rate the driver
+    const acceptedBookings = await Booking.find({ ride: ride._id, status: "accepted" });
+    const { notifyUser } = require("../utils/notifier");
+    for (const b of acceptedBookings) {
+      notifyUser(b.rider, {
+        type: "RIDE_COMPLETED",
+        rideId: ride._id,
+        actorName: me.name,
+        ride: { _id: ride._id, pickup: ride.pickup, dropoff: ride.dropoff },
+      });
+    }
+  }
 
   await statusDoc.populate(TIMELINE_POPULATE);
 

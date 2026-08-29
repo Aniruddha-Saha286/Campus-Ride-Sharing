@@ -60,14 +60,21 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
           lg:translate-x-0 lg:z-30
           ${collapsed ? "w-[72px]" : "w-64"}`}
       >
-        <div className={`flex h-16 items-center border-b border-slate-100 px-4 ${collapsed ? "justify-center" : "gap-2.5"}`}>
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand-600 text-sm font-bold text-white">
+        <button
+          type="button"
+          onClick={() => {
+            window.location.href = "/dashboard";
+          }}
+          className={`flex h-16 w-full items-center border-b border-slate-100 px-4 text-left transition hover:bg-slate-50 cursor-pointer ${collapsed ? "justify-center" : "gap-2.5"}`}
+          title="Refresh Dashboard"
+        >
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-600 text-sm font-bold text-white shadow-xs">
             CR
           </div>
           {!collapsed && (
             <span className="text-sm font-bold text-slate-800 whitespace-nowrap">Campus Ride</span>
           )}
-        </div>
+        </button>
 
         <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-1">
           {NAV_ITEMS.map((item, i) =>

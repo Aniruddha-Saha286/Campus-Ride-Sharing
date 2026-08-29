@@ -127,6 +127,10 @@ const getSuggestedMatches = asyncHandler(async (req, res) => {
   const prefByStudent = new Map(prefs.map((p) => [String(p.student), p]));
   const profileByStudent = new Map(profiles.map((p) => [String(p.student), p]));
 
+  const { getRatingsForDrivers } = require("../utils/studentHelper");
+  const candidateIds = candidates.map((c) => c._id);
+  const ratingMap = await getRatingsForDrivers(candidateIds);
+
   const matches = candidates
     .map((candidate) => {
       const pref = prefByStudent.get(String(candidate._id));
@@ -134,6 +138,7 @@ const getSuggestedMatches = asyncHandler(async (req, res) => {
 
       const theirData = resolveCommuteData(pref, profile, candidate);
       const score = calculateScore(myData, theirData);
+      const candidateRating = ratingMap.get(String(candidate._id)) || null;
 
       return {
         student: {
@@ -144,6 +149,7 @@ const getSuggestedMatches = asyncHandler(async (req, res) => {
           homeArea: candidate.homeArea,
           profilePhoto: candidate.profilePhoto,
           idVerified: true,
+          rating: candidateRating,
         },
         score,
         destination: pref?.destination || profile?.destination || null,

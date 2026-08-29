@@ -27,12 +27,19 @@ export default function TopNavbar({ onMenuClick, collapsed }) {
         >
           <Menu size={20} />
         </button>
-        <div className="flex items-center gap-2 lg:hidden">
-          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-brand-600 text-xs font-bold text-white">
+        <button
+          type="button"
+          onClick={() => {
+            window.location.href = "/dashboard";
+          }}
+          className="flex items-center gap-2 lg:hidden transition hover:opacity-80 cursor-pointer"
+          title="Refresh Dashboard"
+        >
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-600 text-xs font-bold text-white">
             CR
           </div>
           <span className="text-sm font-bold text-slate-800">Campus Ride</span>
-        </div>
+        </button>
       </div>
 
       <div className="flex items-center gap-2">

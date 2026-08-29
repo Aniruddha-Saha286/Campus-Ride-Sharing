@@ -98,3 +98,5 @@ export const getAdminRideTracker = () =>
 
 export const getAdminUserRides = (userId) =>
   adminClient.get(`/admin/users/${userId}/rides`);
+
+export default client;
