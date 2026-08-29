@@ -78,6 +78,8 @@ const studentSchema = new mongoose.Schema(
     isBanned: { type: Boolean, default: false },
     banReason: { type: String, default: null },
     bannedAt: { type: Date, default: null },
+    clearedNotificationIds: { type: [String], default: [] },
+    notificationsClearedAt: { type: Date, default: null },
   },
   { timestamps: true, toJSON: { virtuals: true } }
 );

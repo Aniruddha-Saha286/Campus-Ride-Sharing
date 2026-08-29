@@ -12,16 +12,40 @@ const methodLabel = (method) =>
   method === "BKASH" ? "bKash" : method === "MANUAL" ? "Manual" : "payment";
 
 const TOAST_META = {
-  PAYMENT_MADE: { title: "Payment received", tone: "success" },
-  PAYMENT_CONFIRMED: { title: "Payment confirmed", tone: "success" },
-  PAYMENT_INITIATED: { title: "bKash payment started", tone: "info" },
-  METHOD_SELECTED: { title: "Payment method chosen", tone: "info" },
-  MANUAL_STATUS_PENDING: { title: "Manual payment pending", tone: "warn" },
-  DUE_UPDATED: { title: "Due updated", tone: "warn" },
-  REFUND_REQUESTED: { title: "Refund requested", tone: "violet" },
-  REFUND_CONFIRMED: { title: "Refund confirmed", tone: "success" },
-  "due-reminder": { title: "Payment due today", tone: "warn" },
-  CHAT_MESSAGE: { title: "New Message", tone: "info" },
+  PAYMENT_MADE: { title: "Payment Confirmation Alert", tone: "success" },
+  PAYMENT_CONFIRMED: { title: "Payment Confirmation Alert", tone: "success" },
+  PAYMENT_INITIATED: { title: "Payment Initiated Alert", tone: "info" },
+  METHOD_SELECTED: { title: "Payment Method Chosen", tone: "info" },
+  MANUAL_STATUS_PENDING: { title: "Payment Verification Alert", tone: "warn" },
+  DUE_UPDATED: { title: "Payment Due Alert", tone: "warn" },
+  REFUND_REQUESTED: { title: "Payment Refund Alert", tone: "violet" },
+  REFUND_CONFIRMED: { title: "Payment Refund Alert", tone: "success" },
+  REQUEST_ACCEPTED: { title: "Seat Request Accepted", tone: "success" },
+  REQUEST_DECLINED: { title: "Seat Request Declined", tone: "warn" },
+  "due-reminder": { title: "Payslip Deadline Alert", tone: "warn" },
+  CHAT_MESSAGE: { title: "Direct Message Alert", tone: "info" },
+};
+
+const getDeletedIds = () => {
+  try {
+    return new Set(JSON.parse(localStorage.getItem("deleted_notifications_cache") || "[]"));
+  } catch {
+    return new Set();
+  }
+};
+
+const addDeletedId = (id) => {
+  try {
+    const set = getDeletedIds();
+    set.add(String(id));
+    localStorage.setItem("deleted_notifications_cache", JSON.stringify(Array.from(set).slice(-200)));
+  } catch {}
+};
+
+const clearDeletedIds = () => {
+  try {
+    localStorage.removeItem("deleted_notifications_cache");
+  } catch {}
 };
 
 const buildToast = (event) => {
@@ -58,6 +82,12 @@ const buildToast = (event) => {
     case "REFUND_CONFIRMED":
       body = `${event.actorName} confirmed the refund of ${amount}.`;
       break;
+    case "REQUEST_ACCEPTED":
+      body = `${event.actorName} accepted your seat request.${amount ? ` Fare: ${amount}. Please select payment.` : ""}`;
+      break;
+    case "REQUEST_DECLINED":
+      body = `${event.actorName} declined your seat request.`;
+      break;
     case "due-reminder":
       body = event.message || "Today is the last day to pay your due. A late fee starts tomorrow.";
       break;
@@ -90,7 +120,9 @@ export function NotificationProvider({ children }) {
     try {
       const res = await client.get("/notifications");
       if (res.data?.data) {
-        setNotifications(res.data.data);
+        const deleted = getDeletedIds();
+        const active = res.data.data.filter((n) => !deleted.has(String(n.id)));
+        setNotifications(active);
       }
     } catch {
       /* ignore */
@@ -107,6 +139,9 @@ export function NotificationProvider({ children }) {
       const item = buildToast(event);
       if (!item) return;
 
+      const deleted = getDeletedIds();
+      if (deleted.has(String(item.id))) return;
+
       // Add to toast banner popup with deduplication (keep at most 2 toasts)
       setToasts((prev) => {
         if (prev.some((t) => t.id === item.id || (t.title === item.title && t.body === item.body))) {
@@ -121,12 +156,12 @@ export function NotificationProvider({ children }) {
 
       // Add to persistent notification bar list
       setNotifications((prev) => {
-        const filtered = prev.filter((n) => n.id !== item.id);
+        const filtered = prev.filter((n) => n.id !== item.id && !deleted.has(String(n.id)));
         return [item, ...filtered.slice(0, 19)];
       });
     });
 
-    // Fast 3-second live sync matching chat modal speed
+    // 3-second live sync
     const interval = setInterval(loadNotifications, 3000);
 
     return () => {
@@ -155,12 +190,14 @@ export function NotificationProvider({ children }) {
   const clearNotifications = async () => {
     setNotifications([]);
     setToasts([]);
+    clearDeletedIds();
     try {
       await client.delete("/notifications");
     } catch {}
   };
 
   const deleteNotification = async (id) => {
+    addDeletedId(id);
     setNotifications((prev) => prev.filter((n) => n.id !== id));
     setToasts((prev) => prev.filter((t) => t.id !== id));
     try {

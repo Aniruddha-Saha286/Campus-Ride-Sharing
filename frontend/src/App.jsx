@@ -119,12 +119,19 @@ function PublicLayout() {
     <div className="w-full min-h-screen overflow-x-hidden bg-slate-50">
       <header className="border-b border-slate-100 bg-white">
         <div className="flex w-full items-center gap-2 px-6 py-4 lg:px-10">
-          <Link to="/" className="flex items-center gap-2 rounded-lg transition hover:opacity-80">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-600 text-sm font-bold text-white">
+          <button
+            type="button"
+            onClick={() => {
+              window.location.href = "/dashboard";
+            }}
+            className="flex items-center gap-2 rounded-lg transition hover:opacity-80 cursor-pointer"
+            title="Refresh"
+          >
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600 text-sm font-bold text-white">
               CR
             </div>
             <span className="text-sm font-bold text-slate-800">Campus Ride Sharing</span>
-          </Link>
+          </button>
         </div>
       </header>
       <Outlet />

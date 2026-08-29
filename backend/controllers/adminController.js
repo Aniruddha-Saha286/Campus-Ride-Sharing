@@ -48,7 +48,7 @@ const listUsers = asyncHandler(async (req, res) => {
   const { search } = req.query || {};
   const filter = {};
   if (search && search.trim()) {
-    const term = search.trim();
+    const term = search.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     filter.$or = [
       { name: { $regex: term, $options: "i" } },
       { studentId: { $regex: term, $options: "i" } },

@@ -27,7 +27,12 @@ const createProfile = asyncHandler(async (req, res) => {
     return res.status(400).json({ success: false, message: "University ID card is required" });
   }
 
-  const cardPath = req.file.path;
+  const cardPath =
+    req.file.path ||
+    req.file.secure_url ||
+    (req.file.filename
+      ? `https://res.cloudinary.com/mock-cloud/image/upload/v1/id-cards/${req.file.filename}`
+      : "https://res.cloudinary.com/mock-cloud/image/upload/v1/id-cards/card.png");
 
   const existing = await findStudentByEmail(req.user.universityEmail);
   if (existing) {
@@ -90,7 +95,12 @@ const uploadPhoto = asyncHandler(async (req, res) => {
 
   if (student.profilePhoto) await deleteUploadedFile(student.profilePhoto);
 
-  student.profilePhoto = req.file.path;
+  student.profilePhoto =
+    req.file.path ||
+    req.file.secure_url ||
+    (req.file.filename
+      ? `https://res.cloudinary.com/mock-cloud/image/upload/v1/profile-photos/${req.file.filename}`
+      : "https://res.cloudinary.com/mock-cloud/image/upload/v1/profile-photos/photo.png");
   await student.save();
 
   res.json({ success: true, data: student });
@@ -108,9 +118,7 @@ const deletePhoto = asyncHandler(async (req, res) => {
 });
 
 const uploadStudentIdCard = asyncHandler(async (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({ success: false, message: "No ID card image provided" });
-  }
+  if (!req.file) return res.status(400).json({ success: false, message: "No image file provided" });
 
   const student = await findStudentByEmail(req.user.universityEmail);
   if (!student) {
@@ -120,8 +128,14 @@ const uploadStudentIdCard = asyncHandler(async (req, res) => {
 
   if (student.studentIdCard) await deleteUploadedFile(student.studentIdCard);
 
-  student.studentIdCard = req.file.path;
+  student.studentIdCard =
+    req.file.path ||
+    req.file.secure_url ||
+    (req.file.filename
+      ? `https://res.cloudinary.com/mock-cloud/image/upload/v1/id-cards/${req.file.filename}`
+      : "https://res.cloudinary.com/mock-cloud/image/upload/v1/id-cards/card.png");
   student.idVerificationStatus = "pending";
+  student.idVerified = false;
   student.idVerificationNote = null;
   await student.save();
 

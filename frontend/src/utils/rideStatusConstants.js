@@ -23,7 +23,7 @@ export const TRIP_META = {
 
 export const NEXT_ACTION = {
   upcoming: { next: "ongoing", label: "Start ride" },
-  ongoing: { next: "completed", label: "Mark completed" },
+  ongoing: { next: "completed", label: "Ride Ended" },
 };
 
 export const TIMELINE_COLORS = {

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   MapPin,
   Navigation,
@@ -18,12 +18,16 @@ import {
   Flag,
   Sparkles,
   Play,
+  Star,
 } from "lucide-react";
 import {
   getMyRideStatuses,
   updateRideStatus,
 } from "../api/rideStatusApi";
+import { getPendingRating } from "../api/ratingApi";
+import RateDriverModal from "./RateDriverModal.jsx";
 import usePolling from "../hooks/usePolling";
+import { onRealtime } from "../api/realtimeBus";
 import { TRIP_META, NEXT_ACTION, TIMELINE_COLORS, formatTime12Hour } from "../utils/rideStatusConstants";
 
 const isCoord = (s) => /^-?\d+\.\d+$/.test(s.trim());
@@ -131,6 +135,8 @@ export default function RideStatusTracker() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState("");
   const [expanded, setExpanded] = useState({});
+  const [pendingRatingRide, setPendingRatingRide] = useState(null);
+  const [dismissedRideIds, setDismissedRideIds] = useState({});
 
   const toggleExpanded = (id) =>
     setExpanded((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -140,6 +146,19 @@ export default function RideStatusTracker() {
     try {
       const res = await getMyRideStatuses();
       setStatuses(res.data.data || []);
+
+      // Check if passenger has any unrated completed ride
+      try {
+        const ratingRes = await getPendingRating();
+        if (ratingRes.data?.data?.ride) {
+          const r = ratingRes.data.data.ride;
+          if (!dismissedRideIds[r._id]) {
+            setPendingRatingRide(r);
+          }
+        }
+      } catch {
+        /* ignore */
+      }
     } catch (err) {
       setError(err.response?.data?.message || "Could not load ride statuses.");
     } finally {
@@ -148,6 +167,31 @@ export default function RideStatusTracker() {
   };
 
   usePolling(load);
+
+  useEffect(() => {
+    const off = onRealtime((event) => {
+      if (
+        event?.type === "RIDE_COMPLETED" ||
+        event?.type === "RIDE_STATUS_UPDATED" ||
+        event?.type === "RATING_RECEIVED"
+      ) {
+        load();
+      }
+    });
+    return () => off();
+  }, []);
+
+  const handleDismissRating = () => {
+    if (pendingRatingRide) {
+      setDismissedRideIds((prev) => ({ ...prev, [pendingRatingRide._id]: true }));
+    }
+    setPendingRatingRide(null);
+  };
+
+  const handleOpenRatingForRide = (ride) => {
+    if (!ride) return;
+    setPendingRatingRide(ride);
+  };
 
   const advance = async (rideId, currentStatus) => {
     const action = NEXT_ACTION[currentStatus];
@@ -455,12 +499,24 @@ export default function RideStatusTracker() {
                       </span>
                     </div>
 
-                    <span
-                      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-semibold ${meta.classes}`}
-                    >
-                      <span className={`h-1.5 w-1.5 rounded-full ${meta.dot}`} />
-                      {meta.label}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      {entry.role === "rider" && entry.ride && (
+                        <button
+                          type="button"
+                          onClick={() => handleOpenRatingForRide(entry.ride)}
+                          className="flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-bold text-amber-700 transition hover:bg-amber-100 cursor-pointer"
+                        >
+                          <Star size={12} className="fill-amber-400 text-amber-400" />
+                          Rate Driver
+                        </button>
+                      )}
+                      <span
+                        className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-semibold ${meta.classes}`}
+                      >
+                        <span className={`h-1.5 w-1.5 rounded-full ${meta.dot}`} />
+                        {meta.label}
+                      </span>
+                    </div>
                   </div>
                 );
               })}
@@ -468,6 +524,15 @@ export default function RideStatusTracker() {
           </section>
         )}
       </div>
+
+      {pendingRatingRide && (
+        <RateDriverModal
+          isOpen={!!pendingRatingRide}
+          ride={pendingRatingRide}
+          onClose={handleDismissRating}
+          onRated={handleDismissRating}
+        />
+      )}
     </div>
   );
 }
