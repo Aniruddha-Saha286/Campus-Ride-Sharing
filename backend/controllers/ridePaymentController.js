@@ -5,7 +5,7 @@ const Student = require("../models/Student");
 const RidePayment = require("../models/RidePayment");
 const Transaction = require("../models/Transaction");
 const asyncHandler = require("../utils/asyncHandler");
-const { findMe, publicPosterSelect, formatPublicStudent } = require("../utils/studentHelper");
+const { findMe, formatPublicStudent } = require("../utils/studentHelper");
 const { createPayment, executePayment } = require("../utils/bkash");
 const { notifyUser } = require("../utils/notifier");
 const {
@@ -17,8 +17,6 @@ const {
   seatCharge,
   refreshPayment,
   PASSENGER_REFUND_WINDOW_MINUTES,
-  PASSENGER_CANCEL_FREE_MINUTES,
-  PASSENGER_FINE_PER_15MIN,
   computePassengerCancelFine,
 } = require("../utils/ridePaymentHelper");
 
@@ -135,6 +133,7 @@ const formatPayment = (payment) => ({
   finalizedAt: payment.finalizedAt,
   refundRequestedBy: payment.refundRequestedBy,
   refundRequestedAt: payment.refundRequestedAt,
+  driverRefundConfirmedAt: payment.driverRefundConfirmedAt,
   refundMethod: payment.refundMethod,
   refundTransactionId: payment.refundTransactionId,
   refundConfirmedBy: payment.refundConfirmedBy,
@@ -143,6 +142,7 @@ const formatPayment = (payment) => ({
   dueDate: payment.dueDate,
   lastPaymentDate: payment.lastPaymentDate,
   bkashPaymentID: payment.bkashPaymentID,
+  bkashTrxId: payment.bkashTrxId,
   note: payment.note,
   createdAt: payment.createdAt,
 });
@@ -241,17 +241,6 @@ const isRideOpen = async (payment) => {
   if (!payment.ride) return true;
   const ride = await Ride.findById(payment.ride);
   return Boolean(ride && ride.status === "open");
-};
-
-const voidPayment = async (payment) => {
-  if (TERMINAL_STATUSES.includes(payment.status)) return;
-  payment.status = "CANCELLED";
-  payment.remainingAmount = 0;
-  payment.lateFee = 0;
-  payment.lateFeePaid = 0;
-  payment.totalOutstanding = 0;
-  payment.cancelledAt = new Date();
-  await payment.save();
 };
 
 const applyPayment = async (payment, amount) => {
@@ -655,15 +644,28 @@ const markManualPaid = asyncHandler(async (req, res) => {
   }
 
   const rawRef = req.body.reference ? String(req.body.reference).trim() : "";
-  if (!rawRef) {
-    return res.status(400).json({ success: false, message: "Transaction reference is required" });
-  }
-  const reference = rawRef;
+  const reference = rawRef || payment.bkashTrxId || `APPROVED-${Date.now().toString(36).toUpperCase()}`;
 
   payment.finalized = true;
   payment.finalizedBy = me._id;
   payment.finalizedAt = new Date();
+  payment.manualStatus = "PAID";
   await applyPayment(payment, amount);
+
+  if (payment.ride) {
+    await Booking.updateOne(
+      { ride: payment.ride, rider: payment.payer },
+      {
+        $set: {
+          paymentStatus: "SETTLED",
+          settledManually: true,
+          settledBy: "RIDE_POSTER",
+          settledByUserId: me._id,
+          settledAt: new Date(),
+        },
+      }
+    );
+  }
 
   let transaction;
   try {
@@ -674,7 +676,7 @@ const markManualPaid = asyncHandler(async (req, res) => {
       amount,
       ride: payment.ride,
       payment: payment._id,
-      paymentMethod: "MANUAL",
+      paymentMethod: payment.paymentMethod || "MANUAL",
       providerTransactionId: reference,
       status: "COMPLETED",
     });
@@ -691,7 +693,7 @@ const markManualPaid = asyncHandler(async (req, res) => {
     type: "PAYMENT_CONFIRMED",
     actorName: me.name,
     amount,
-    method: "MANUAL",
+    method: payment.paymentMethod || "MANUAL",
     payment,
   });
 
@@ -1038,15 +1040,19 @@ const selectPaymentMethod = asyncHandler(async (req, res) => {
 
   const inactive = assertActivePayment(payment);
   if (inactive) return res.status(inactive.error.status).json({ success: false, message: inactive.error.message });
-  if (payment.finalized) {
+  if (payment.finalized || payment.status === "PAID") {
     return res.status(400).json({ success: false, message: "This payment is already finalized and cannot be changed" });
-  }
-  if (payment.paymentMethod && payment.paymentMethod !== method) {
-    return res.status(400).json({ success: false, message: "Payment method is already set and cannot be changed" });
   }
 
   payment.paymentMethod = method;
+  payment.manualStatus = "PENDING"; // Wait for driver approval
+
+  if (method === "BKASH" && req.body.trxId) {
+    payment.bkashTrxId = String(req.body.trxId).trim();
+  }
+
   await payment.save();
+  await refreshPayment(payment);
 
   await emitPaymentEvent({
     userId: payment.receiver,
@@ -1299,12 +1305,19 @@ const confirmRefund = asyncHandler(async (req, res) => {
   await updated.save();
 
   if (updated.ride) {
+    await Booking.updateOne(
+      { ride: updated.ride, rider: updated.payer, status: { $in: ["pending", "accepted"] } },
+      { $set: { status: "cancelled", cancelReason: "Refund confirmed by passenger" } }
+    );
     const rideDoc = await Ride.findById(updated.ride).select("status");
-    if (rideDoc && rideDoc.status === "open") {
-      await Booking.updateOne(
-        { ride: updated.ride, rider: updated.payer, status: { $in: ["pending", "accepted"] } },
-        { $set: { status: "cancelled", cancelReason: "Payment refunded" } }
-      );
+    if (rideDoc && rideDoc.status === "pending_cancellation") {
+      const activeUnrefunded = await RidePayment.find({
+        ride: updated.ride,
+        status: { $in: ["REFUND_REQUESTED", "PAID"] },
+      });
+      if (activeUnrefunded.length === 0) {
+        await Ride.findByIdAndUpdate(updated.ride, { $set: { status: "cancelled" } });
+      }
     }
   }
 
@@ -1758,79 +1771,36 @@ const driverConfirmRefund = asyncHandler(async (req, res) => {
     return res.status(400).json({ success: false, message: "This payment is not awaiting refund confirmation" });
   }
 
-  const { refundMethod, refundTransactionId } = req.body || {};
-  if (!["BKASH", "MANUAL"].includes(refundMethod)) {
-    return res.status(400).json({ success: false, message: "refundMethod must be 'BKASH' or 'MANUAL'" });
-  }
-  if (refundMethod === "BKASH" && (!refundTransactionId || !String(refundTransactionId).trim())) {
+  const { refundMethod, refundTransactionId } = req.body;
+  const chosenRefundMethod = refundMethod || payment.refundMethod || (payment.paymentMethod === "BKASH" ? "BKASH" : "MANUAL");
+  if (chosenRefundMethod === "BKASH" && (!refundTransactionId || !String(refundTransactionId).trim())) {
     return res.status(400).json({ success: false, message: "Transaction reference is required for bKash refund" });
   }
 
-  const updated = await RidePayment.findOneAndUpdate(
-    { _id: payment._id, status: "REFUND_REQUESTED" },
-    {
-      $set: {
-        status: "REFUNDED",
-        refundConfirmedBy: me._id,
-        refundConfirmedAt: new Date(),
-        refundMethod,
-        refundTransactionId: refundTransactionId ? String(refundTransactionId).trim() : null,
-      },
-    },
-    { new: true }
+  const refundAmount = roundMoney(
+    roundMoney(payment.amountPaid || payment.originalAmount || 0) + roundMoney(payment.lateFeePaid || 0)
   );
-  if (!updated) {
-    return res.status(400).json({ success: false, message: "This payment is not awaiting refund confirmation" });
-  }
 
-  const refundAmount = roundMoney(roundMoney(updated.amountPaid) + roundMoney(updated.lateFeePaid));
-  updated.totalOutstanding = 0;
-  updated.remainingAmount = 0;
-  updated.lateFee = 0;
-  updated.lateFeePaid = 0;
-  updated.finalized = true;
-  updated.finalizedBy = me._id;
-  updated.finalizedAt = new Date();
-  await updated.save();
-
-  if (updated.ride) {
-    const rideDoc = await Ride.findById(updated.ride).select("status");
-    if (rideDoc && rideDoc.status === "open") {
-      await Booking.updateOne(
-        { ride: updated.ride, rider: updated.payer, status: { $in: ["pending", "accepted"] } },
-        { $set: { status: "cancelled", cancelReason: "Payment refunded" } }
-      );
-    }
-  }
-
-  try {
-    const refundTxnRef = updated.refundTransactionId || `REFUND-${String(updated._id)}-${Date.now()}`;
-    await Transaction.create({
-      transactionId: await generateTransactionId(),
-      payer: updated.receiver,
-      receiver: updated.payer,
-      amount: refundAmount,
-      ride: updated.ride,
-      payment: updated._id,
-      paymentMethod: updated.refundMethod || (updated.paymentMethod === "BKASH" ? "BKASH" : "MANUAL"),
-      kind: "REFUND",
-      providerTransactionId: refundTxnRef,
-      status: "COMPLETED",
-    });
-  } catch (err) {
-    if (err.code !== 11000) throw err;
-  }
+  payment.status = "REFUND_REQUESTED";
+  payment.refundMethod = chosenRefundMethod;
+  payment.refundTransactionId = refundTransactionId ? String(refundTransactionId).trim() : null;
+  payment.driverRefundConfirmedAt = new Date();
+  await payment.save();
 
   await emitPaymentEvent({
-    userId: updated.payer,
+    userId: payment.payer,
     type: "REFUND_CONFIRMED",
     actorName: me.name,
     amount: refundAmount,
-    method: updated.paymentMethod === "BKASH" ? "BKASH" : "MANUAL",
-    payment: updated,
+    method: chosenRefundMethod,
+    payment,
   });
 
-  res.json({ success: true, data: formatPayment(updated) });
+  res.json({
+    success: true,
+    data: formatPayment(payment),
+    message: "Refund processed. Waiting for passenger confirmation.",
+  });
 });
 
 const passengerCancelRide = asyncHandler(async (req, res) => {

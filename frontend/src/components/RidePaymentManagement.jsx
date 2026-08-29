@@ -124,19 +124,6 @@ export default function RidePaymentManagement() {
     }
   };
 
-  const doDriverConfirmRefund = async (paymentId) => {
-    setBusy(paymentId);
-    setError("");
-    try {
-      await driverConfirmRefund(paymentId);
-      await load();
-    } catch (err) {
-      setError(err.response?.data?.message || "Could not confirm the refund.");
-    } finally {
-      setBusy("");
-    }
-  };
-
   const doDriverConfirmRefundWithMethod = async (paymentId) => {
     setBusy(paymentId);
     setError("");

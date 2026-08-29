@@ -92,7 +92,6 @@ const buildBlob = (pages) => {
   const kids = pages.map((_, i) => `${i + 3} 0 R`).join(" ");
   objects.push(`<< /Type /Pages /Kids [${kids}] /Count ${pages.length} >>`);
   pages.forEach((page) => {
-    const pageNumber = objects.length + 1;
     const contentNumber = objects.length + 2;
     const fontA = 3 + pages.length * 2;
     const fontB = 4 + pages.length * 2;

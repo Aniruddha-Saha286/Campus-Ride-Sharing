@@ -2,11 +2,12 @@ const GRACE_DAYS = 3;
 const LATE_FEE_PER_DAY = 50;
 const DAY_MS = 86400000;
 const MINUTE_MS = 60000;
-const CANCEL_FREE_MINUTES = 30;
-const FINE_PER_15MIN = 100;
-const PASSENGER_REFUND_WINDOW_MINUTES = 5;
-const PASSENGER_CANCEL_FREE_MINUTES = 20;
-const PASSENGER_FINE_PER_15MIN = 100;
+const CANCEL_FREE_MINUTES = 15;
+const FINE_PER_15MIN = 30; // 30 Taka per interval
+const FINE_INTERVAL_MINUTES = 10; // 10 minutes per interval
+const PASSENGER_REFUND_WINDOW_MINUTES = 15;
+const PASSENGER_CANCEL_FREE_MINUTES = 15;
+const PASSENGER_FINE_PER_15MIN = 30;
 
 const TERMINAL_STATUSES = ["REFUND_REQUESTED", "REFUNDED", "CANCELLED"];
 
@@ -35,12 +36,13 @@ const computePaymentStatus = (payment, now = Date.now()) => {
   return "PENDING";
 };
 
+// 15 minutes free window, then 30 Taka for each 10 minutes after 15 min
 const computeCancellationFine = (acceptedAt) => {
   if (!acceptedAt) return 0;
   const elapsed = Date.now() - new Date(acceptedAt).getTime();
   const elapsedMin = elapsed / MINUTE_MS;
   if (elapsedMin <= CANCEL_FREE_MINUTES) return 0;
-  return Math.ceil((elapsedMin - CANCEL_FREE_MINUTES) / 15) * FINE_PER_15MIN;
+  return Math.ceil((elapsedMin - CANCEL_FREE_MINUTES) / FINE_INTERVAL_MINUTES) * FINE_PER_15MIN;
 };
 
 const computePassengerCancelFine = (acceptedAt) => {
@@ -48,7 +50,7 @@ const computePassengerCancelFine = (acceptedAt) => {
   const elapsed = Date.now() - new Date(acceptedAt).getTime();
   const elapsedMin = elapsed / MINUTE_MS;
   if (elapsedMin <= PASSENGER_CANCEL_FREE_MINUTES) return 0;
-  return Math.ceil((elapsedMin - PASSENGER_CANCEL_FREE_MINUTES) / 15) * PASSENGER_FINE_PER_15MIN;
+  return Math.ceil((elapsedMin - PASSENGER_CANCEL_FREE_MINUTES) / FINE_INTERVAL_MINUTES) * PASSENGER_FINE_PER_15MIN;
 };
 
 const refreshPayment = async (payment) => {

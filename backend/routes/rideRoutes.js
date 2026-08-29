@@ -11,6 +11,7 @@ const {
   cancelRequest,
   cancelRide,
   updateRide,
+  updateBookingSeats,
 } = require("../controllers/rideController");
 
 router.get("/", protect, idVerified, listRides);
@@ -19,6 +20,7 @@ router.post("/", protect, idVerified, createRide);
 router.put("/:rideId", protect, idVerified, updateRide);
 router.post("/:rideId/requests", protect, idVerified, requestSeat);
 router.put("/:rideId/requests/:requestId", protect, idVerified, respondToRequest);
+router.put("/:rideId/requests/:requestId/seats", protect, idVerified, updateBookingSeats);
 router.delete("/:rideId/requests/:requestId", protect, idVerified, cancelRequest);
 router.delete("/:rideId", protect, idVerified, cancelRide);
 
