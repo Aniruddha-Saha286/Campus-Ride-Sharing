@@ -19,10 +19,12 @@ import PaymentRequests from "./components/PaymentRequests.jsx";
 import PaymentDetails from "./components/PaymentDetails.jsx";
 import RidePaymentManagement from "./components/RidePaymentManagement.jsx";
 import RidePaymentDetails from "./components/RidePaymentDetails.jsx";
+import RecentTransactions from "./components/RecentTransactions.jsx";
 import TransactionHistory from "./components/TransactionHistory.jsx";
 import NetBalances from "./components/NetBalances.jsx";
 import NotificationToast from "./components/NotificationToast.jsx";
 import RideStatusTracker from "./components/RideStatusTracker.jsx";
+import CompletedRides from "./components/CompletedRides.jsx";
 import DriverHistory from "./components/DriverHistory.jsx";
 import PassengerHistory from "./components/PassengerHistory.jsx";
 import DashboardLayout from "./components/layout/DashboardLayout.jsx";
@@ -214,6 +216,10 @@ const router = createBrowserRouter([
         element: <RidePaymentDetails />,
       },
       {
+        path: "/recent-transactions",
+        element: <RecentTransactions />,
+      },
+      {
         path: "/transactions",
         element: <TransactionHistory />,
       },
@@ -224,6 +230,10 @@ const router = createBrowserRouter([
       {
         path: "/ride-tracker",
         element: <RideStatusTracker />,
+      },
+      {
+        path: "/completed-rides",
+        element: <CompletedRides />,
       },
       {
         path: "/ride-history/driver",

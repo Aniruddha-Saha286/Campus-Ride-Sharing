@@ -11,6 +11,8 @@ import {
   User,
   Settings,
   Satellite,
+  CheckCircle2,
+  Clock3,
   ChevronLeft,
   ChevronRight,
   Users,
@@ -27,6 +29,7 @@ const NAV_ITEMS = [
     label: "Payments",
     children: [
       { to: "/payments", icon: Wallet, label: "My Payments" },
+      { to: "/recent-transactions", icon: Clock3, label: "Recent Transactions" },
       { to: "/transactions", icon: History, label: "Transaction History" },
     ],
   },
@@ -40,6 +43,7 @@ const NAV_ITEMS = [
   },
   { to: "/recurring", icon: Repeat2, label: "Recurring Commute" },
   { to: "/ride-tracker", icon: Satellite, label: "Ride Tracker" },
+  { to: "/completed-rides", icon: CheckCircle2, label: "Completed Rides" },
   { divider: true },
   { to: "/profile", icon: User, label: "Profile" },
 ];

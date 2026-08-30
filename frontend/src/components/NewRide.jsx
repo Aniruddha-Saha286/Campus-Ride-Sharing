@@ -228,7 +228,7 @@ export default function NewRide() {
                   <div className="pl-2">
                     <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Est. Drive Time</p>
                     <p className="mt-0.5 text-sm font-extrabold text-slate-800">
-                      {routeInfo?.duration ? `~${routeInfo.duration} mins` : "—"}
+                      {routeInfo?.durationText ? `~${routeInfo.durationText}` : routeInfo?.duration ? `~${routeInfo.duration} mins` : "—"}
                     </p>
                   </div>
                 </div>
