@@ -1,7 +1,6 @@
 import React, { useState } from "react";
 import {
   X,
-  QrCode,
   Wallet,
   Check,
   Loader2,
@@ -36,11 +35,6 @@ export default function DriverProcessRefundModal({ isOpen, onClose, request, onC
   const passengerPhone = cleanPhone(request.rider?.phone);
   const passengerName = request.rider?.name || "Passenger";
 
-  // Raw phone number payload directly recognized by bKash app scanner for Send Money
-  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(
-    passengerPhone
-  )}&color=d12053&bgcolor=ffffff`;
-
   const handleCopyPhone = () => {
     if (!passengerPhone) return;
     navigator.clipboard.writeText(passengerPhone);
@@ -65,7 +59,7 @@ export default function DriverProcessRefundModal({ isOpen, onClose, request, onC
           <h3 className="text-base font-bold text-slate-800">
             Process Passenger Refund
           </h3>
-          <button onClick={onClose} disabled={busy} className="rounded-lg p-1 text-slate-400 hover:bg-slate-200 transition">
+          <button onClick={onClose} disabled={busy} className="rounded-lg p-1 text-slate-400 hover:bg-slate-200 transition cursor-pointer">
             <X size={18} />
           </button>
         </div>
@@ -93,19 +87,19 @@ export default function DriverProcessRefundModal({ isOpen, onClose, request, onC
               <button
                 type="button"
                 onClick={() => setRefundMethod("BKASH")}
-                className={`flex items-center justify-center gap-2 rounded-xl p-2.5 text-xs font-bold transition border ${
+                className={`flex items-center justify-center gap-2 rounded-xl p-2.5 text-xs font-bold transition border cursor-pointer ${
                   refundMethod === "BKASH"
                     ? "border-[#d12053] bg-pink-50 text-[#d12053] shadow-xs"
                     : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
                 }`}
               >
-                <QrCode size={15} />
+                <Smartphone size={15} />
                 bKash
               </button>
               <button
                 type="button"
                 onClick={() => setRefundMethod("MANUAL")}
-                className={`flex items-center justify-center gap-2 rounded-xl p-2.5 text-xs font-bold transition border ${
+                className={`flex items-center justify-center gap-2 rounded-xl p-2.5 text-xs font-bold transition border cursor-pointer ${
                   refundMethod === "MANUAL"
                     ? "border-emerald-600 bg-emerald-50 text-emerald-700 shadow-xs"
                     : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
@@ -119,58 +113,38 @@ export default function DriverProcessRefundModal({ isOpen, onClose, request, onC
 
           {refundMethod === "BKASH" && (
             <div className="space-y-3 pt-1">
-              {/* QR Code Card */}
               <div className="rounded-2xl border border-pink-200 bg-pink-50/40 p-4 space-y-3">
-                <div className="flex flex-col sm:flex-row items-center gap-3">
-                  <div className="relative shrink-0 rounded-xl border border-[#d12053]/20 bg-white p-2 shadow-xs">
-                    <img
-                      src={qrUrl}
-                      alt={`bKash QR for ${passengerName}`}
-                      className="h-28 w-28 object-contain rounded-lg"
-                    />
-                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                      <div className="h-5 w-5 rounded-full bg-white p-0.5 shadow-xs border border-[#d12053]/30">
-                        <svg viewBox="0 0 100 100" className="h-full w-full fill-[#d12053]">
-                          <path d="M50 5 L85 40 L65 50 L85 95 L50 70 L25 80 L35 55 L15 40 Z" />
-                        </svg>
-                      </div>
-                    </div>
-                  </div>
+                <p className="text-xs font-bold text-[#d12053] uppercase tracking-wider flex items-center gap-1.5">
+                  <Smartphone size={13} /> Passenger bKash Details
+                </p>
+                <p className="text-xs text-slate-600">
+                  Send <strong>৳{refundAmount}</strong> refund to {passengerName}'s bKash number:
+                </p>
 
-                  <div className="flex-1 w-full space-y-2 text-center sm:text-left">
-                    <p className="text-xs font-bold text-[#d12053] flex items-center justify-center sm:justify-start gap-1">
-                      <QrCode size={13} /> Scan via bKash App
-                    </p>
-                    <p className="text-[11px] text-slate-600">
-                      Send <strong>৳{refundAmount}</strong> to {passengerName}'s bKash number.
-                    </p>
-
-                    <div className="flex items-center justify-between rounded-xl bg-white border border-slate-200 px-2.5 py-1 text-xs">
-                      <span className="font-mono font-bold text-slate-800 flex items-center gap-1">
-                        <Smartphone size={12} className="text-[#d12053]" />
-                        {passengerPhone}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={handleCopyPhone}
-                        className={`flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-bold transition ${
-                          copied
-                            ? "bg-emerald-600 text-white"
-                            : "bg-slate-100 text-slate-700 hover:bg-slate-200"
-                        }`}
-                      >
-                        {copied ? (
-                          <>
-                            <Check size={10} /> Copied
-                          </>
-                        ) : (
-                          <>
-                            <Copy size={10} /> Copy
-                          </>
-                        )}
-                      </button>
-                    </div>
-                  </div>
+                <div className="flex items-center justify-between rounded-xl bg-white border border-slate-200 px-3 py-2 text-xs">
+                  <span className="font-mono font-bold text-slate-800 flex items-center gap-1.5 text-sm">
+                    <Smartphone size={14} className="text-[#d12053]" />
+                    {passengerPhone}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleCopyPhone}
+                    className={`flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-bold transition cursor-pointer ${
+                      copied
+                        ? "bg-emerald-600 text-white"
+                        : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                    }`}
+                  >
+                    {copied ? (
+                      <>
+                        <Check size={11} /> Copied!
+                      </>
+                    ) : (
+                      <>
+                        <Copy size={11} /> Copy
+                      </>
+                    )}
+                  </button>
                 </div>
               </div>
 

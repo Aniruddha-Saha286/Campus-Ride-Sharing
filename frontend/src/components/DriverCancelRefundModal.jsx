@@ -2,7 +2,6 @@ import React, { useState } from "react";
 import {
   X,
   AlertTriangle,
-  QrCode,
   Wallet,
   Check,
   Loader2,
@@ -123,7 +122,7 @@ export default function DriverCancelRefundModal({ isOpen, onClose, ride, onConfi
                       : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
                   }`}
                 >
-                  <QrCode size={15} />
+                  <Smartphone size={15} />
                   bKash Refund
                 </button>
                 <button
@@ -144,7 +143,7 @@ export default function DriverCancelRefundModal({ isOpen, onClose, ride, onConfi
                 <div className="space-y-4 pt-2">
                   <div className="space-y-3">
                     <p className="text-xs font-bold text-[#d12053] uppercase tracking-wider flex items-center gap-1.5">
-                      <QrCode size={14} /> Passenger bKash QR Code & Details
+                      <Smartphone size={14} /> Passenger bKash Details
                     </p>
 
                     {paidRequests.map((req, idx) => {
@@ -162,9 +161,6 @@ export default function DriverCancelRefundModal({ isOpen, onClose, ride, onConfi
                       const passengerPhone = cleanPhone(req.rider?.phone);
                       const passengerName = req.rider?.name || `Passenger ${idx + 1}`;
                       const amount = req.payment?.amountPaid || req.payment?.originalAmount || 0;
-                      const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(
-                        passengerPhone
-                      )}&color=d12053&bgcolor=ffffff`;
 
                       return (
                         <div
@@ -181,53 +177,35 @@ export default function DriverCancelRefundModal({ isOpen, onClose, ride, onConfi
                             </span>
                           </div>
 
-                          {/* QR Code and Instructions */}
-                          <div className="flex flex-col sm:flex-row items-center gap-4">
-                            <div className="relative shrink-0 rounded-xl border border-[#d12053]/20 bg-pink-50/40 p-2 shadow-xs">
-                              <img
-                                src={qrUrl}
-                                alt={`bKash QR for ${passengerName}`}
-                                className="h-32 w-32 object-contain rounded-lg"
-                              />
-                              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                                <div className="h-6 w-6 rounded-full bg-white p-0.5 shadow-sm border border-[#d12053]/30">
-                                  <svg viewBox="0 0 100 100" className="h-full w-full fill-[#d12053]">
-                                    <path d="M50 5 L85 40 L65 50 L85 95 L50 70 L25 80 L35 55 L15 40 Z" />
-                                  </svg>
-                                </div>
-                              </div>
-                            </div>
+                          <div className="w-full space-y-2">
+                            <p className="text-[11px] font-semibold text-slate-600">
+                              Send <strong>৳{amount}</strong> refund to passenger's bKash number:
+                            </p>
 
-                            <div className="flex-1 w-full space-y-2 text-center sm:text-left">
-                              <p className="text-[11px] font-semibold text-slate-600">
-                                Scan using your <strong>bKash App</strong> to send <strong>৳{amount}</strong> refund directly.
-                              </p>
-
-                              <div className="flex items-center justify-between rounded-xl bg-slate-50 border border-slate-200 px-3 py-1.5 text-xs">
-                                <span className="font-mono font-bold text-slate-800 flex items-center gap-1.5">
-                                  <Smartphone size={13} className="text-[#d12053]" />
-                                  {passengerPhone}
-                                </span>
-                                <button
-                                  type="button"
-                                  onClick={() => handleCopy(passengerPhone)}
-                                  className={`flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-bold transition ${
-                                    copiedPhone === passengerPhone
-                                      ? "bg-emerald-600 text-white"
-                                      : "bg-white border border-slate-200 text-slate-700 hover:bg-slate-100"
-                                  }`}
-                                >
-                                  {copiedPhone === passengerPhone ? (
-                                    <>
-                                      <Check size={11} /> Copied
-                                    </>
-                                  ) : (
-                                    <>
-                                      <Copy size={11} /> Copy
-                                    </>
-                                  )}
-                                </button>
-                              </div>
+                            <div className="flex items-center justify-between rounded-xl bg-slate-50 border border-slate-200 px-3 py-2 text-xs">
+                              <span className="font-mono font-bold text-slate-800 flex items-center gap-1.5 text-sm">
+                                <Smartphone size={15} className="text-[#d12053]" />
+                                {passengerPhone}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => handleCopy(passengerPhone)}
+                                className={`flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-bold transition cursor-pointer ${
+                                  copiedPhone === passengerPhone
+                                    ? "bg-emerald-600 text-white"
+                                    : "bg-white border border-slate-200 text-slate-700 hover:bg-slate-100"
+                                }`}
+                              >
+                                {copiedPhone === passengerPhone ? (
+                                  <>
+                                    <Check size={12} /> Copied!
+                                  </>
+                                ) : (
+                                  <>
+                                    <Copy size={12} /> Copy
+                                  </>
+                                )}
+                              </button>
                             </div>
                           </div>
                         </div>

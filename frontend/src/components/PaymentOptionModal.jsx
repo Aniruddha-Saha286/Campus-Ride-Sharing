@@ -83,7 +83,7 @@ export default function PaymentOptionModal({
 
           {/* Payment Options Grid */}
           <div className="space-y-3">
-            {/* Option 1: bKash QR */}
+            {/* Option 1: bKash */}
             <button
               type="button"
               onClick={onSelectBkash}
@@ -98,11 +98,11 @@ export default function PaymentOptionModal({
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-extrabold text-slate-900">Pay via bKash</span>
                     <span className="rounded-full bg-[#d12053] px-2 py-0.5 text-[9px] font-black uppercase text-white tracking-wider">
-                      QR Code
+                      Send Money
                     </span>
                   </div>
                   <p className="mt-0.5 text-xs text-slate-500 leading-relaxed">
-                    Scan the driver's QR code in your bKash app and enter the TrxID.
+                    Send Money to driver's bKash number and enter the TrxID.
                   </p>
                 </div>
               </div>

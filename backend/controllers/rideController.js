@@ -975,6 +975,7 @@ const updateBookingSeats = asyncHandler(async (req, res) => {
   if (rideStatus && rideStatus.tripStatus !== "upcoming") {
     return res.status(400).json({ success: false, message: "Cannot change seats once the ride has already started" });
   }
+
   const booking = await Booking.findOne({ _id: requestId, ride: ride._id });
   if (!booking) return res.status(404).json({ success: false, message: "Booking not found" });
   if (String(booking.rider) !== String(me._id)) {

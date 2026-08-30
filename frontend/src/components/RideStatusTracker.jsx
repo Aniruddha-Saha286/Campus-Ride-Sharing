@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { Link } from "react-router-dom";
 import {
   MapPin,
   Navigation,
@@ -129,6 +130,34 @@ function TripProgressStepper({ currentStatus }) {
   );
 }
 
+const DISMISSED_RATINGS_KEY = "dismissed_rating_rides";
+
+const isRatingDismissed = (rideId) => {
+  if (!rideId) return false;
+  try {
+    const raw = localStorage.getItem(DISMISSED_RATINGS_KEY);
+    const list = raw ? JSON.parse(raw) : [];
+    return list.includes(String(rideId));
+  } catch {
+    return false;
+  }
+};
+
+const dismissRatingForRide = (rideId) => {
+  if (!rideId) return;
+  try {
+    const raw = localStorage.getItem(DISMISSED_RATINGS_KEY);
+    const list = raw ? JSON.parse(raw) : [];
+    const str = String(rideId);
+    if (!list.includes(str)) {
+      list.push(str);
+      localStorage.setItem(DISMISSED_RATINGS_KEY, JSON.stringify(list));
+    }
+  } catch {
+    /* ignore */
+  }
+};
+
 export default function RideStatusTracker() {
   const [statuses, setStatuses] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -136,7 +165,6 @@ export default function RideStatusTracker() {
   const [busy, setBusy] = useState("");
   const [expanded, setExpanded] = useState({});
   const [pendingRatingRide, setPendingRatingRide] = useState(null);
-  const [dismissedRideIds, setDismissedRideIds] = useState({});
 
   const toggleExpanded = (id) =>
     setExpanded((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -152,7 +180,7 @@ export default function RideStatusTracker() {
         const ratingRes = await getPendingRating();
         if (ratingRes.data?.data?.ride) {
           const r = ratingRes.data.data.ride;
-          if (!dismissedRideIds[r._id]) {
+          if (!isRatingDismissed(r._id)) {
             setPendingRatingRide(r);
           }
         }
@@ -182,8 +210,8 @@ export default function RideStatusTracker() {
   }, []);
 
   const handleDismissRating = () => {
-    if (pendingRatingRide) {
-      setDismissedRideIds((prev) => ({ ...prev, [pendingRatingRide._id]: true }));
+    if (pendingRatingRide?._id) {
+      dismissRatingForRide(pendingRatingRide._id);
     }
     setPendingRatingRide(null);
   };
@@ -256,10 +284,14 @@ export default function RideStatusTracker() {
               <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
               {active.length} Active Ride{active.length === 1 ? "" : "s"}
             </span>
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1 font-semibold text-slate-600">
-              <CheckCircle2 size={13} className="text-slate-400" />
+            <Link
+              to="/completed-rides"
+              className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 border border-slate-200/80 px-3 py-1 font-bold text-slate-600 hover:bg-slate-200 transition"
+            >
+              <CheckCircle2 size={13} className="text-emerald-600" />
               {done.length} Completed
-            </span>
+              <ChevronRight size={12} className="text-slate-400" />
+            </Link>
           </div>
         </div>
 
@@ -282,10 +314,19 @@ export default function RideStatusTracker() {
               <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-50 text-slate-300">
                 <Inbox size={24} />
               </div>
-              <p className="mt-3 text-sm font-semibold text-slate-700">No active trips currently in transit</p>
+              <p className="mt-3 text-sm font-bold text-slate-700">No active trips currently in transit</p>
               <p className="mt-1 text-xs text-slate-400">
                 Post or book a ride to see real-time updates and advance trip stages here.
               </p>
+              {done.length > 0 && (
+                <Link
+                  to="/completed-rides"
+                  className="mt-4 inline-flex items-center gap-1.5 rounded-xl bg-slate-900 px-4 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-slate-800"
+                >
+                  <CheckCircle2 size={14} className="text-emerald-400" />
+                  View Completed Rides ({done.length})
+                </Link>
+              )}
             </div>
           ) : (
             <div className="space-y-4">
@@ -472,57 +513,6 @@ export default function RideStatusTracker() {
             </div>
           )}
         </section>
-
-        {/* Completed Rides History Section */}
-        {done.length > 0 && (
-          <section className="pt-4">
-            <h2 className="mb-3 flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-slate-500">
-              <CheckCircle2 size={15} className="text-emerald-500" /> Completed Rides History
-            </h2>
-            <div className="space-y-3">
-              {done.map((entry) => {
-                const meta = TRIP_META[entry.tripStatus] || TRIP_META.completed;
-                return (
-                  <div
-                    key={entry._id}
-                    className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-100 bg-white p-4 shadow-sm opacity-80 transition hover:opacity-100"
-                  >
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-bold text-slate-700">
-                        <MapPin size={11} className="text-slate-400" />
-                        {shortLabel(entry.ride?.pickup)}
-                      </span>
-                      <Navigation size={12} className="text-slate-300" />
-                      <span className="flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-bold text-slate-700">
-                        <MapPin size={11} className="text-slate-400" />
-                        {shortLabel(entry.ride?.dropoff)}
-                      </span>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      {entry.role === "rider" && entry.ride && (
-                        <button
-                          type="button"
-                          onClick={() => handleOpenRatingForRide(entry.ride)}
-                          className="flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-bold text-amber-700 transition hover:bg-amber-100 cursor-pointer"
-                        >
-                          <Star size={12} className="fill-amber-400 text-amber-400" />
-                          Rate Driver
-                        </button>
-                      )}
-                      <span
-                        className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-semibold ${meta.classes}`}
-                      >
-                        <span className={`h-1.5 w-1.5 rounded-full ${meta.dot}`} />
-                        {meta.label}
-                      </span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </section>
-        )}
       </div>
 
       {pendingRatingRide && (

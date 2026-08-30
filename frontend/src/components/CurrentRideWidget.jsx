@@ -60,6 +60,34 @@ const mapsUrl = (ride) => {
   return `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${dest}&travelmode=driving`;
 };
 
+const DISMISSED_RATINGS_KEY = "dismissed_rating_rides";
+
+const isRatingDismissed = (rideId) => {
+  if (!rideId) return false;
+  try {
+    const raw = localStorage.getItem(DISMISSED_RATINGS_KEY);
+    const list = raw ? JSON.parse(raw) : [];
+    return list.includes(String(rideId));
+  } catch {
+    return false;
+  }
+};
+
+const dismissRatingForRide = (rideId) => {
+  if (!rideId) return;
+  try {
+    const raw = localStorage.getItem(DISMISSED_RATINGS_KEY);
+    const list = raw ? JSON.parse(raw) : [];
+    const str = String(rideId);
+    if (!list.includes(str)) {
+      list.push(str);
+      localStorage.setItem(DISMISSED_RATINGS_KEY, JSON.stringify(list));
+    }
+  } catch {
+    /* ignore */
+  }
+};
+
 export default function CurrentRideWidget() {
   const [statuses, setStatuses] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -67,7 +95,6 @@ export default function CurrentRideWidget() {
   const [busy, setBusy] = useState("");
   const [expandedIds, setExpandedIds] = useState({});
   const [pendingRatingRide, setPendingRatingRide] = useState(null);
-  const [dismissedRideIds, setDismissedRideIds] = useState({});
 
   const toggleExpanded = (id) =>
     setExpandedIds((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -83,7 +110,7 @@ export default function CurrentRideWidget() {
         const ratingRes = await getPendingRating();
         if (ratingRes.data?.data?.ride) {
           const r = ratingRes.data.data.ride;
-          if (!dismissedRideIds[r._id]) {
+          if (!isRatingDismissed(r._id)) {
             setPendingRatingRide(r);
           }
         }
@@ -119,8 +146,8 @@ export default function CurrentRideWidget() {
   };
 
   const handleDismissRating = () => {
-    if (pendingRatingRide) {
-      setDismissedRideIds((prev) => ({ ...prev, [pendingRatingRide._id]: true }));
+    if (pendingRatingRide?._id) {
+      dismissRatingForRide(pendingRatingRide._id);
     }
     setPendingRatingRide(null);
   };
