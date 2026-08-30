@@ -10,6 +10,7 @@ import {
   ArrowUpFromLine,
   Inbox,
   RotateCcw,
+  ArrowUpDown,
 } from "lucide-react";
 import {
   getTransactionHistory,
@@ -89,6 +90,7 @@ export default function TransactionHistory() {
     search: "",
   });
   const [roleTab, setRoleTab] = useState("all");
+  const [sortBy, setSortBy] = useState("latest");
   const [busy, setBusy] = useState("");
 
   const query = () => {
@@ -119,9 +121,18 @@ export default function TransactionHistory() {
   usePolling(load);
 
   const filteredData = useMemo(() => {
-    if (roleTab === "all") return data;
-    return data.filter((t) => t.role === roleTab);
-  }, [data, roleTab]);
+    let list = data;
+    if (roleTab !== "all") list = list.filter((t) => t.role === roleTab);
+    return [...list].sort((a, b) => {
+      const aDate = new Date(a.createdAt || 0).getTime();
+      const bDate = new Date(b.createdAt || 0).getTime();
+      if (sortBy === "latest") return bDate - aDate;
+      if (sortBy === "oldest") return aDate - bDate;
+      if (sortBy === "amount_desc") return (b.amount || 0) - (a.amount || 0);
+      if (sortBy === "amount_asc") return (a.amount || 0) - (b.amount || 0);
+      return 0;
+    });
+  }, [data, roleTab, sortBy]);
 
   const filteredTotals = useMemo(() => {
     let received = 0;
@@ -287,13 +298,29 @@ export default function TransactionHistory() {
             >
               Manual
             </button>
-            <button
-              onClick={clearFilters}
-              className="ml-auto flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold text-slate-400 transition hover:text-slate-600"
-            >
-              <RotateCcw size={12} />
-              Reset
-            </button>
+            <div className="ml-auto flex items-center gap-2">
+              <div className="relative flex items-center">
+                <ArrowUpDown size={12} className="pointer-events-none absolute left-2.5 text-slate-400" />
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value)}
+                  aria-label="Sort transactions"
+                  className="rounded-full border border-slate-200 bg-white py-1.5 pl-7 pr-6 text-xs font-bold text-slate-700 shadow-2xs outline-none transition hover:border-slate-300 focus:border-brand-500 focus:ring-2 focus:ring-brand-100 cursor-pointer"
+                >
+                  <option value="latest">Latest First</option>
+                  <option value="oldest">Oldest First</option>
+                  <option value="amount_desc">Amount (High to Low)</option>
+                  <option value="amount_asc">Amount (Low to High)</option>
+                </select>
+              </div>
+              <button
+                onClick={clearFilters}
+                className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold text-slate-400 transition hover:text-slate-600 cursor-pointer"
+              >
+                <RotateCcw size={12} />
+                Reset
+              </button>
+            </div>
           </div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <div className="relative">

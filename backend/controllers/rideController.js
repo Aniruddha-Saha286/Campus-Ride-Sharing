@@ -2,6 +2,7 @@ const mongoose = require("mongoose");
 const Ride = require("../models/Ride");
 const Booking = require("../models/Booking");
 const RidePayment = require("../models/RidePayment");
+const RideStatus = require("../models/RideStatus");
 const asyncHandler = require("../utils/asyncHandler");
 const {
   findMe,
@@ -93,6 +94,10 @@ const listRides = asyncHandler(async (req, res) => {
   const posterIds = rides.map((r) => r.poster?._id).filter(Boolean);
   const ratingMap = await getRatingsForDrivers(posterIds);
 
+  // Get trip status for rides (to check if driver started the ride)
+  const statuses = await RideStatus.find({ ride: { $in: rides.map((r) => r._id) } }).select("ride tripStatus");
+  const tripStatusMap = new Map(statuses.map((s) => [String(s.ride), s.tripStatus]));
+
   // Get current user's bookings and payments for these rides
   const myBookings = await Booking.find({
     rider: me._id,
@@ -117,6 +122,7 @@ const listRides = asyncHandler(async (req, res) => {
       const posterRating = ratingMap.get(String(r.poster._id)) || null;
       const myBooking = myBookingMap.get(String(r._id));
       const myPayment = myPaymentMap.get(String(r._id));
+      const tripStatus = tripStatusMap.get(String(r._id)) || "upcoming";
 
       return {
         _id: r._id,
@@ -129,6 +135,7 @@ const listRides = asyncHandler(async (req, res) => {
         departureTime: r.departureTime,
         seats: r.seats,
         seatsLeft,
+        tripStatus,
         charge: r.charge || 0,
         chargePerSeat: r.charge ? seatCharge(r.charge) : 0,
         notes: r.notes,
@@ -168,7 +175,7 @@ const listRides = asyncHandler(async (req, res) => {
           : null,
       };
     })
-    .filter((r) => r.seatsLeft > 0 || r.myBooking != null);
+    .filter((r) => ((r.tripStatus === "upcoming" || !r.tripStatus) && r.seatsLeft > 0) || r.myBooking != null);
 
   res.json({ success: true, data });
 });
@@ -205,6 +212,10 @@ const getMyRides = asyncHandler(async (req, res) => {
     requestsByRide.get(key).push(b);
   });
 
+  const postedRideIds = postedRides.map((r) => r._id);
+  const postedStatuses = await RideStatus.find({ ride: { $in: postedRideIds } }).select("ride tripStatus");
+  const postedTripStatusMap = new Map(postedStatuses.map((s) => [String(s.ride), s.tripStatus]));
+
   const posted = postedRides.map((r) => {
     const requests = requestsByRide.get(String(r._id)) || [];
     const accepted = requests
@@ -222,6 +233,7 @@ const getMyRides = asyncHandler(async (req, res) => {
       departureTime: r.departureTime,
       seats: r.seats,
       seatsLeft: Math.max(0, r.seats - accepted),
+      tripStatus: postedTripStatusMap.get(String(r._id)) || "upcoming",
       charge: r.charge || 0,
       chargePerSeat: r.charge ? seatCharge(r.charge) : 0,
       notes: r.notes,
@@ -278,6 +290,9 @@ const getMyRides = asyncHandler(async (req, res) => {
 
   // Calculate booked seats (accepted) for requested rides to determine remaining seats
   const requestedRideIds = requested.map((b) => b.ride?._id).filter(Boolean);
+  const requestedStatuses = await RideStatus.find({ ride: { $in: requestedRideIds } }).select("ride tripStatus");
+  const requestedTripStatusMap = new Map(requestedStatuses.map((s) => [String(s.ride), s.tripStatus]));
+
   const acceptedBookingsForRequested = await Booking.find({
     ride: { $in: requestedRideIds },
     status: "accepted",
@@ -311,6 +326,7 @@ const getMyRides = asyncHandler(async (req, res) => {
       const posterRating = b.ride?.poster ? requestedRatingMap.get(String(b.ride.poster._id)) : null;
       const acceptedCount = acceptedSeatsByRequestedRide.get(String(b.ride ? b.ride._id : "")) || 0;
       const seatsLeft = Math.max(0, (b.ride ? b.ride.seats : 0) - acceptedCount);
+      const tripStatus = b.ride ? (requestedTripStatusMap.get(String(b.ride._id)) || "upcoming") : "upcoming";
 
       return {
         _id: b._id,
@@ -356,6 +372,7 @@ const getMyRides = asyncHandler(async (req, res) => {
               departureTime: b.ride.departureTime,
               seats: b.ride.seats,
               seatsLeft: seatsLeft,
+              tripStatus,
               charge: b.ride.charge || 0,
               chargePerSeat: b.ride.charge ? seatCharge(b.ride.charge) : 0,
               notes: b.ride.notes,
@@ -367,8 +384,19 @@ const getMyRides = asyncHandler(async (req, res) => {
       };
     })
     .filter((b) => {
-      if (!b.ride || b.ride.status === "cancelled" || b.status === "cancelled") {
-        return b.payment && (b.payment.status === "REFUND_REQUESTED" || b.payment.status === "REFUNDED");
+      if (!b.ride) return false;
+      // Completed rides: only keep in active dashboard if there's a pending payment action.
+      // Otherwise they belong in Ride History / RideStatusTracker (handled separately by groupmate's feature).
+      if (b.ride.status === "completed") {
+        // Keep if payment is still pending action (unpaid, partial, or refund in progress)
+        if (!b.payment) return false; // free ride completed → hide
+        const terminalPaymentStatuses = ["PAID", "REFUNDED", "CANCELLED"];
+        if (terminalPaymentStatuses.includes(b.payment.status)) return false;
+        return true; // still has payment pending → keep visible
+      }
+      // If ride or booking is cancelled/declined, only show if a refund action is actively pending
+      if (b.ride.status === "cancelled" || b.status === "cancelled" || b.status === "declined") {
+        return b.payment && b.payment.status === "REFUND_REQUESTED";
       }
       return true;
     });
@@ -399,6 +427,16 @@ const requestSeat = asyncHandler(async (req, res) => {
   if (ride.status !== "open") {
     return res.status(400).json({ success: false, message: "This ride is no longer open" });
   }
+
+  // Once driver starts the ride (ongoing/completed), no user can request a seat for that ride
+  const rideStatus = await RideStatus.findOne({ ride: ride._id });
+  if (rideStatus && rideStatus.tripStatus !== "upcoming") {
+    return res.status(400).json({
+      success: false,
+      message: "This ride has already started and is no longer accepting new seat requests",
+    });
+  }
+
   if (String(ride.poster) === String(me._id)) {
     return res.status(400).json({ success: false, message: "You cannot request a seat on your own ride" });
   }
@@ -810,6 +848,11 @@ const updateRide = asyncHandler(async (req, res) => {
     return res.status(400).json({ success: false, message: `Cannot edit a ${ride.status} ride offer` });
   }
 
+  const rideStatus = await RideStatus.findOne({ ride: ride._id });
+  if (rideStatus && rideStatus.tripStatus !== "upcoming") {
+    return res.status(400).json({ success: false, message: "Cannot edit a ride that has already started" });
+  }
+
   const acceptedBookings = await Booking.find({ ride: ride._id, status: "accepted" });
   const acceptedSeats = acceptedBookings.reduce((sum, b) => sum + (b.seats || 1), 0);
 
@@ -928,6 +971,10 @@ const updateBookingSeats = asyncHandler(async (req, res) => {
     return res.status(400).json({ success: false, message: "This ride is not open" });
   }
 
+  const rideStatus = await RideStatus.findOne({ ride: ride._id });
+  if (rideStatus && rideStatus.tripStatus !== "upcoming") {
+    return res.status(400).json({ success: false, message: "Cannot change seats once the ride has already started" });
+  }
   const booking = await Booking.findOne({ _id: requestId, ride: ride._id });
   if (!booking) return res.status(404).json({ success: false, message: "Booking not found" });
   if (String(booking.rider) !== String(me._id)) {
