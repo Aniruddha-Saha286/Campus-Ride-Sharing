@@ -60,34 +60,6 @@ const mapsUrl = (ride) => {
   return `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${dest}&travelmode=driving`;
 };
 
-const DISMISSED_RATINGS_KEY = "dismissed_rating_rides";
-
-const isRatingDismissed = (rideId) => {
-  if (!rideId) return false;
-  try {
-    const raw = localStorage.getItem(DISMISSED_RATINGS_KEY);
-    const list = raw ? JSON.parse(raw) : [];
-    return list.includes(String(rideId));
-  } catch {
-    return false;
-  }
-};
-
-const dismissRatingForRide = (rideId) => {
-  if (!rideId) return;
-  try {
-    const raw = localStorage.getItem(DISMISSED_RATINGS_KEY);
-    const list = raw ? JSON.parse(raw) : [];
-    const str = String(rideId);
-    if (!list.includes(str)) {
-      list.push(str);
-      localStorage.setItem(DISMISSED_RATINGS_KEY, JSON.stringify(list));
-    }
-  } catch {
-    /* ignore */
-  }
-};
-
 export default function CurrentRideWidget() {
   const [statuses, setStatuses] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -95,6 +67,7 @@ export default function CurrentRideWidget() {
   const [busy, setBusy] = useState("");
   const [expandedIds, setExpandedIds] = useState({});
   const [pendingRatingRide, setPendingRatingRide] = useState(null);
+  const [dismissedRideIds, setDismissedRideIds] = useState({});
 
   const toggleExpanded = (id) =>
     setExpandedIds((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -110,7 +83,8 @@ export default function CurrentRideWidget() {
         const ratingRes = await getPendingRating();
         if (ratingRes.data?.data?.ride) {
           const r = ratingRes.data.data.ride;
-          if (!isRatingDismissed(r._id)) {
+          const dismissedList = JSON.parse(localStorage.getItem("dismissed_rating_rides") || "[]");
+          if (!dismissedList.includes(r._id) && !dismissedRideIds[r._id]) {
             setPendingRatingRide(r);
           }
         }
@@ -146,8 +120,18 @@ export default function CurrentRideWidget() {
   };
 
   const handleDismissRating = () => {
-    if (pendingRatingRide?._id) {
-      dismissRatingForRide(pendingRatingRide._id);
+    if (pendingRatingRide) {
+      try {
+        const key = "dismissed_rating_rides";
+        const saved = JSON.parse(localStorage.getItem(key) || "[]");
+        if (!saved.includes(pendingRatingRide._id)) {
+          saved.push(pendingRatingRide._id);
+          localStorage.setItem(key, JSON.stringify(saved));
+        }
+      } catch (err) {
+        console.error("Failed to save dismissed rating ride to localStorage", err);
+      }
+      setDismissedRideIds((prev) => ({ ...prev, [pendingRatingRide._id]: true }));
     }
     setPendingRatingRide(null);
   };

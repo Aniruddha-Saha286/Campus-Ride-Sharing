@@ -11,8 +11,6 @@ const {
   getRatingsForDrivers,
 } = require("../utils/studentHelper");
 const {
-  GRACE_DAYS,
-  DAY_MS,
   TERMINAL_STATUSES,
   roundMoney,
   seatCharge,
@@ -538,7 +536,7 @@ const respondToRequest = asyncHandler(async (req, res) => {
         existingPayment.amountPaid = 0;
         existingPayment.remainingAmount = paymentAmount;
         existingPayment.lateFeePaid = 0;
-        existingPayment.dueDate = new Date(Date.now() + GRACE_DAYS * DAY_MS);
+        existingPayment.dueDate = null;
         existingPayment.lastPaymentDate = null;
         existingPayment.bkashPaymentID = null;
         await refreshPayment(existingPayment);
@@ -552,7 +550,7 @@ const respondToRequest = asyncHandler(async (req, res) => {
         originalAmount: paymentAmount,
         amountPaid: 0,
         remainingAmount: paymentAmount,
-        dueDate: new Date(Date.now() + GRACE_DAYS * DAY_MS),
+        dueDate: null,
       });
       await refreshPayment(payment);
     }
@@ -732,13 +730,7 @@ const cancelRide = asyncHandler(async (req, res) => {
   const cancellationFine = earliestAccepted ? computeCancellationFine(earliestAccepted.acceptedAt) : 0;
 
   if (paidPayments.length > 0) {
-    const trimmedReason = (cancelReason || reason ? String(cancelReason || reason).trim() : "");
-    if (!trimmedReason) {
-      return res.status(400).json({
-        success: false,
-        message: "Cancellation reason is required when passengers have paid",
-      });
-    }
+    const trimmedReason = (cancelReason || reason ? String(cancelReason || reason).trim() : "") || "Ride cancelled by driver";
 
     // If passengers have paid, set ride to pending_cancellation until passengers confirm refund
     ride.status = "pending_cancellation";
@@ -975,7 +967,6 @@ const updateBookingSeats = asyncHandler(async (req, res) => {
   if (rideStatus && rideStatus.tripStatus !== "upcoming") {
     return res.status(400).json({ success: false, message: "Cannot change seats once the ride has already started" });
   }
-
   const booking = await Booking.findOne({ _id: requestId, ride: ride._id });
   if (!booking) return res.status(404).json({ success: false, message: "Booking not found" });
   if (String(booking.rider) !== String(me._id)) {

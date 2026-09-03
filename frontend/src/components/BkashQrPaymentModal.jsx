@@ -3,12 +3,12 @@ import {
   X,
   Copy,
   Check,
-  QrCode,
   Smartphone,
   ShieldCheck,
   AlertCircle,
   Loader2,
   Info,
+  CheckCircle2,
 } from "lucide-react";
 
 export default function BkashQrPaymentModal({
@@ -34,7 +34,6 @@ export default function BkashQrPaymentModal({
 
   const confirmFn = onConfirm || onSubmit;
 
-  // Clean to standard 11-digit Bangladeshi mobile number format recognized by bKash app scanner
   const cleanPhone = (phone) => {
     if (!phone) return "01700000000";
     let cleaned = String(phone).replace(/\D/g, "");
@@ -48,15 +47,10 @@ export default function BkashQrPaymentModal({
 
   const driverPhone = cleanPhone(rawDriverPhone);
 
-  // Raw phone number in QR payload is directly recognized by bKash App's built-in QR scanner for Send Money
-  const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(
-    driverPhone
-  )}&color=d12053&bgcolor=ffffff`;
-
   const handleCopyPhone = () => {
     navigator.clipboard.writeText(driverPhone);
     setCopied(true);
-    setTimeout(() => setCopied(false), 2500);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   const handleSubmit = async (e) => {
@@ -84,14 +78,11 @@ export default function BkashQrPaymentModal({
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2.5">
               <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white p-1 shadow-xs">
-                {/* bKash Bird Icon SVG */}
-                <svg viewBox="0 0 100 100" className="h-full w-full fill-[#d12053]">
-                  <path d="M50 5 L85 40 L65 50 L85 95 L50 70 L25 80 L35 55 L15 40 Z" />
-                </svg>
+                <Smartphone size={18} className="text-[#d12053]" />
               </div>
               <div>
-                <h3 className="text-lg font-black tracking-tight text-white">bKash QR Payment</h3>
-                <p className="text-[11px] font-medium text-pink-100">Scan & Pay via bKash App</p>
+                <h3 className="text-lg font-black tracking-tight text-white">Pay via bKash</h3>
+                <p className="text-[11px] font-medium text-pink-100">Send Money via bKash App</p>
               </div>
             </div>
             <button
@@ -122,118 +113,111 @@ export default function BkashQrPaymentModal({
           </div>
         </div>
 
-        {/* Modal Body */}
-        <div className="max-h-[75vh] overflow-y-auto p-6 space-y-5">
-          {/* QR Code Container */}
-          <div className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-[#d12053]/30 bg-pink-50/40 p-4 text-center">
-            <div className="relative overflow-hidden rounded-xl border border-[#d12053]/20 bg-white p-2 shadow-xs">
-              <img
-                src={qrImageUrl}
-                alt="bKash Payment QR Code"
-                className="h-44 w-44 object-contain"
-              />
-              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                <div className="h-8 w-8 rounded-full bg-white p-1 shadow-md border border-[#d12053]/20">
-                  <svg viewBox="0 0 100 100" className="h-full w-full fill-[#d12053]">
-                    <path d="M50 5 L85 40 L65 50 L85 95 L50 70 L25 80 L35 55 L15 40 Z" />
-                  </svg>
+        {/* Modal Body with 4-Step Instructions */}
+        <div className="max-h-[75vh] overflow-y-auto p-6 space-y-4">
+          <div className="space-y-2.5">
+            {/* Step 1 */}
+            <div className="flex items-start gap-2.5 rounded-xl border border-rose-100 bg-rose-50/40 p-3 text-xs">
+              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#d12053] font-bold text-white text-[10px]">
+                1
+              </span>
+              <span className="text-slate-700 mt-0.5">
+                Open your <strong className="text-[#d12053]">bKash App</strong> on your phone.
+              </span>
+            </div>
+
+            {/* Step 2 */}
+            <div className="flex items-start gap-2.5 rounded-xl border border-rose-100 bg-rose-50/40 p-3 text-xs">
+              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#d12053] font-bold text-white text-[10px]">
+                2
+              </span>
+              <span className="text-slate-700 mt-0.5">
+                Tap on <strong className="text-[#d12053]">"Send Money"</strong>.
+              </span>
+            </div>
+
+            {/* Step 3 */}
+            <div className="flex items-start gap-2.5 rounded-xl border border-rose-100 bg-rose-50/40 p-3 text-xs">
+              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#d12053] font-bold text-white text-[10px]">
+                3
+              </span>
+              <div className="flex-1">
+                <span className="text-slate-700 block mb-1.5">
+                  Send <strong className="text-[#d12053]">৳{Number(amount).toLocaleString("en-US", { maximumFractionDigits: 2 })}</strong> to driver's number:
+                </span>
+                <div className="flex items-center justify-between rounded-lg bg-white border border-rose-200 px-3 py-2">
+                  <span className="font-mono font-bold text-slate-800 text-sm tracking-wider">
+                    {driverPhone}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleCopyPhone}
+                    className="inline-flex items-center gap-1 rounded-md bg-[#d12053] px-2.5 py-1 text-xs font-bold text-white shadow-xs hover:bg-[#b01742] transition"
+                  >
+                    {copied ? <Check size={12} /> : <Copy size={12} />}
+                    {copied ? "Copied!" : "Copy Number"}
+                  </button>
                 </div>
               </div>
             </div>
-            <p className="mt-2.5 text-xs font-bold text-[#d12053] flex items-center gap-1">
-              <QrCode size={14} /> Scan with bKash App
-            </p>
-          </div>
 
-          {/* Driver bKash Number Box */}
-          <div className="rounded-2xl border border-slate-100 bg-slate-50/80 p-3.5">
-            <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-              Or Send Money Manually to Driver's bKash
-            </p>
-            <div className="mt-1.5 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Smartphone size={16} className="text-[#d12053]" />
-                <span className="font-mono text-sm font-bold text-slate-800 tracking-wider">
-                  {driverPhone}
+            {/* Step 4 */}
+            <div className="flex items-start gap-2.5 rounded-xl border border-rose-100 bg-rose-50/40 p-3 text-xs">
+              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#d12053] font-bold text-white text-[10px]">
+                4
+              </span>
+              <div className="flex-1">
+                <span className="text-slate-700 block font-bold mb-1.5">
+                  Fill in the bKash Transaction ID (TrxID) <span className="text-rose-500">*</span>:
                 </span>
+                <input
+                  type="text"
+                  value={trxId}
+                  onChange={(e) => {
+                    setTrxId(e.target.value.toUpperCase());
+                    setError("");
+                  }}
+                  placeholder="e.g. 9M7A8K9L"
+                  maxLength={20}
+                  className="w-full uppercase font-mono font-bold tracking-widest rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-800 outline-none transition focus:border-[#d12053] focus:ring-2 focus:ring-rose-100"
+                />
               </div>
-              <button
-                type="button"
-                onClick={handleCopyPhone}
-                className={`flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-bold transition ${
-                  copied
-                    ? "bg-emerald-600 text-white"
-                    : "bg-white border border-slate-200 text-slate-700 hover:bg-slate-100"
-                }`}
-              >
-                {copied ? (
-                  <>
-                    <Check size={12} /> Copied
-                  </>
-                ) : (
-                  <>
-                    <Copy size={12} /> Copy Number
-                  </>
-                )}
-              </button>
             </div>
           </div>
 
-          {/* TrxID Input Form */}
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                Enter bKash Transaction ID (TrxID) <span className="text-rose-500">*</span>
-              </label>
-              <input
-                type="text"
-                value={trxId}
-                onChange={(e) => {
-                  setTrxId(e.target.value.toUpperCase());
-                  setError("");
-                }}
-                placeholder="e.g. BL89K7X12P"
-                maxLength={20}
-                className="w-full uppercase font-mono rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-2.5 text-sm font-bold tracking-widest text-slate-900 outline-none transition focus:border-[#d12053] focus:bg-white focus:ring-4 focus:ring-[#d12053]/10"
-              />
-              <p className="mt-1 text-[11px] text-slate-400 flex items-center gap-1">
-                <Info size={11} /> You will receive the TrxID in SMS after completing the payment.
-              </p>
+          {error && (
+            <div className="flex items-center gap-2 rounded-xl bg-rose-50 px-3.5 py-2 text-xs font-semibold text-rose-600 border border-rose-100">
+              <AlertCircle size={14} className="shrink-0" />
+              {error}
             </div>
+          )}
 
-            {error && (
-              <div className="flex items-center gap-2 rounded-xl bg-rose-50 px-3.5 py-2 text-xs font-semibold text-rose-600">
-                <AlertCircle size={14} className="shrink-0" />
-                {error}
-              </div>
-            )}
-
-            <div className="flex items-center gap-3 pt-2">
-              <button
-                type="button"
-                onClick={onClose}
-                disabled={busy}
-                className="flex-1 rounded-xl border border-slate-200 py-2.5 text-xs font-bold text-slate-600 transition hover:bg-slate-50 disabled:opacity-60"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={busy || !trxId.trim()}
-                className="flex-1 flex items-center justify-center gap-1.5 rounded-xl bg-[#d12053] py-2.5 text-xs font-bold text-white shadow-md shadow-[#d12053]/25 transition hover:bg-[#b01742] disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {busy ? (
-                  <>
-                    <Loader2 size={14} className="animate-spin" /> Submitting...
-                  </>
-                ) : (
-                  <>
-                    <ShieldCheck size={15} /> Confirm Payment
-                  </>
-                )}
-              </button>
-            </div>
-          </form>
+          <div className="flex items-center gap-3 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={busy}
+              className="flex-1 rounded-xl border border-slate-200 py-2.5 text-xs font-bold text-slate-600 transition hover:bg-slate-50 disabled:opacity-60"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleSubmit}
+              disabled={busy || !trxId.trim()}
+              className="flex-1 flex items-center justify-center gap-1.5 rounded-xl bg-[#d12053] py-2.5 text-xs font-bold text-white shadow-md shadow-[#d12053]/25 transition hover:bg-[#b01742] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {busy ? (
+                <>
+                  <Loader2 size={14} className="animate-spin" /> Submitting...
+                </>
+              ) : (
+                <>
+                  <ShieldCheck size={15} /> Confirm Payment
+                </>
+              )}
+            </button>
+          </div>
         </div>
       </div>
     </div>

@@ -16,9 +16,10 @@ import {
   AlertTriangle,
   X,
   Inbox,
-  RefreshCcw,
   Lock,
   XCircle,
+  Copy,
+  Check,
 } from "lucide-react";
 import {
   getRidePaymentDetails,
@@ -90,6 +91,8 @@ export default function RidePaymentDetails() {
   const [markRef, setMarkRef] = useState("");
   const [bkashPaymentID, setBkashPaymentID] = useState("");
   const [bkashAmount, setBkashAmount] = useState("");
+  const [bkashTrxId, setBkashTrxId] = useState("");
+  const [phoneCopied, setPhoneCopied] = useState(false);
   const [dueAmount, setDueAmount] = useState("");
   const [dueOpen, setDueOpen] = useState(false);
   const [confirmRefundOpen, setConfirmRefundOpen] = useState(false);
@@ -212,41 +215,27 @@ export default function RidePaymentDetails() {
     }
   };
 
-  const startBkash = async () => {
-    setBusy("initiate");
-    setError("");
-    try {
-      const res = await initiateBkashPayment(paymentId, Number(bkashAmount));
-      const { paymentID, bkashURL } = res.data.data;
-      setBkashPaymentID(paymentID);
-      if (bkashURL) {
-        const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-        if (isMobile) {
-          window.location.href = bkashURL;
-        } else {
-          const width = 500;
-          const height = 650;
-          const left = (screen.width - width) / 2;
-          const top = (screen.height - height) / 2;
-          window.open(bkashURL, "bKash Checkout", `width=${width},height=${height},top=${top},left=${left}`);
-        }
-      }
-    } catch (err) {
-      setError(err.response?.data?.message || "Could not start the bKash payment.");
-    } finally {
-      setBusy("");
-    }
+  const handleCopyPhone = (phone) => {
+    if (!phone) return;
+    navigator.clipboard.writeText(phone);
+    setPhoneCopied(true);
+    setTimeout(() => setPhoneCopied(false), 2000);
   };
 
-  const verifyBkash = async () => {
-    setBusy("verify");
+  const submitBkashPayment = async () => {
+    if (!bkashTrxId.trim()) {
+      setError("Please enter the bKash Transaction ID (TrxID).");
+      return;
+    }
+    setBusy("bkash-submit");
     setError("");
     try {
-      await verifyBkashPayment(paymentId, bkashPaymentID, Number(bkashAmount));
-      setBkashPaymentID("");
+      await verifyBkashPayment(paymentId, bkashTrxId.trim());
+      setSuccess("bKash payment confirmed successfully!");
+      setBkashTrxId("");
       await load();
     } catch (err) {
-      setError(err.response?.data?.message || "The bKash payment could not be verified.");
+      setError(err.response?.data?.message || "Could not confirm bKash payment.");
     } finally {
       setBusy("");
     }
@@ -542,52 +531,99 @@ export default function RidePaymentDetails() {
           </p>
 
           {payment.canPayOnline && (
-            <div className="mt-4 rounded-xl border border-rose-100 bg-rose-50/50 p-4">
-              <h3 className="mb-2 text-sm font-bold text-slate-800">Pay with bKash</h3>
-              <div className="flex flex-wrap items-end gap-3">
-                <label className="block">
-                  <span className="mb-1 block text-xs font-semibold text-slate-600">Amount (BDT)</span>
-                  <input
-                    type="number"
-                    min="0.01"
-                    step="0.01"
-                    max={payment.totalOutstanding}
-                    value={bkashAmount}
-                    onChange={(e) => setBkashAmount(e.target.value)}
-                    className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm text-slate-800 outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
-                  />
-                </label>
-                <button
-                  onClick={startBkash}
-                  disabled={busy === "initiate" || !bkashAmount || Number(bkashAmount) <= 0}
-                  className="flex items-center gap-2 rounded-lg bg-rose-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {busy === "initiate" ? <Loader2 className="animate-spin" size={15} /> : <Smartphone size={15} />}
-                  Pay now
-                </button>
+            <div className="mt-5 rounded-2xl border border-rose-200 bg-gradient-to-br from-rose-50/80 via-white to-pink-50/40 p-5 shadow-xs">
+              <div className="flex items-center gap-2.5 mb-3">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-rose-600 text-white shadow-xs">
+                  <Smartphone size={18} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">Pay via bKash (Send Money)</h3>
+                  <p className="text-xs text-slate-500">Follow the steps below to complete your payment</p>
+                </div>
               </div>
-              {bkashPaymentID && (
-                <div className="mt-3 rounded-lg border border-rose-200 bg-white px-4 py-3">
-                  <p className="text-xs font-semibold text-rose-700">bKash payment initiated</p>
-                  <p className="mt-1 text-xs text-rose-600">
-                    A bKash window should have opened. Complete the payment there, then come back here.
-                    If the window didn't open, click below to verify.
+
+              {/* 4 Steps */}
+              <div className="space-y-2.5 my-4">
+                {/* Step 1 */}
+                <div className="flex items-start gap-3 rounded-xl border border-rose-100 bg-white p-3 shadow-xs">
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-rose-100 text-xs font-bold text-rose-700">
+                    1
+                  </span>
+                  <p className="text-xs font-semibold text-slate-700 mt-0.5">
+                    Go to your <strong className="text-rose-600">bKash App</strong> on your phone.
                   </p>
-                  <div className="mt-2 flex items-center gap-3">
-                    <code className="rounded-lg bg-slate-100 px-3 py-2 font-mono text-xs font-bold text-slate-700">
-                      {bkashPaymentID}
-                    </code>
-                    <button
-                      onClick={verifyBkash}
-                      disabled={busy === "verify"}
-                      className="flex items-center gap-1.5 rounded-lg bg-rose-600 px-3.5 py-2 text-xs font-semibold text-white transition hover:bg-rose-700 disabled:opacity-60"
-                    >
-                      {busy === "verify" ? <Loader2 className="animate-spin" size={13} /> : <ShieldCheck size={13} />}
-                      I've completed the payment
-                    </button>
+                </div>
+
+                {/* Step 2 */}
+                <div className="flex items-start gap-3 rounded-xl border border-rose-100 bg-white p-3 shadow-xs">
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-rose-100 text-xs font-bold text-rose-700">
+                    2
+                  </span>
+                  <p className="text-xs font-semibold text-slate-700 mt-0.5">
+                    Go to <strong className="text-rose-600">"Send Money"</strong>.
+                  </p>
+                </div>
+
+                {/* Step 3 */}
+                <div className="flex items-start gap-3 rounded-xl border border-rose-100 bg-white p-3 shadow-xs">
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-rose-100 text-xs font-bold text-rose-700">
+                    3
+                  </span>
+                  <div className="flex-1">
+                    <p className="text-xs font-semibold text-slate-700">
+                      Copy driver's phone number and send <strong className="text-rose-600">{formatTaka(payment.originalAmount)}</strong> to him:
+                    </p>
+                    <div className="mt-2 flex items-center justify-between gap-2 rounded-lg bg-slate-50 border border-slate-200 px-3 py-2">
+                      <div>
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Driver's bKash Number</span>
+                        <span className="text-sm font-mono font-bold text-slate-800">
+                          {payment.receiver?.phone || "017XXXXXXXX"}
+                        </span>
+                      </div>
+                      {payment.receiver?.phone && (
+                        <button
+                          type="button"
+                          onClick={() => handleCopyPhone(payment.receiver.phone)}
+                          className="inline-flex items-center gap-1 rounded-md bg-rose-600 px-2.5 py-1 text-xs font-bold text-white shadow-xs transition hover:bg-rose-700"
+                        >
+                          {phoneCopied ? <Check size={12} /> : <Copy size={12} />}
+                          {phoneCopied ? "Copied!" : "Copy Number"}
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
-              )}
+
+                {/* Step 4 */}
+                <div className="flex items-start gap-3 rounded-xl border border-rose-100 bg-white p-3 shadow-xs">
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-rose-100 text-xs font-bold text-rose-700">
+                    4
+                  </span>
+                  <div className="flex-1">
+                    <p className="text-xs font-semibold text-slate-700 mb-2">
+                      Paste the bKash <strong>Transaction ID (TrxID)</strong> here:
+                    </p>
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <input
+                        type="text"
+                        value={bkashTrxId}
+                        onChange={(e) => setBkashTrxId(e.target.value.toUpperCase())}
+                        placeholder="e.g. 9M7A8K9L"
+                        className="flex-1 rounded-xl border border-slate-200 px-3.5 py-2.5 text-xs font-mono font-bold tracking-wider text-slate-800 uppercase outline-none transition focus:border-rose-500 focus:ring-2 focus:ring-rose-100 bg-white"
+                      />
+                      <button
+                        type="button"
+                        onClick={submitBkashPayment}
+                        disabled={busy === "bkash-submit" || !bkashTrxId.trim()}
+                        className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-rose-600 px-4 py-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-rose-700 disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+                      >
+                        {busy === "bkash-submit" ? <Loader2 className="animate-spin" size={14} /> : <CheckCircle2 size={14} />}
+                        Submit bKash Payment
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           )}
 

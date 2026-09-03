@@ -43,8 +43,8 @@ export default function RateDriverModal({ isOpen, onClose, ride, onRated }) {
         <div className="relative bg-gradient-to-br from-brand-600 to-indigo-700 p-6 text-white text-center">
           <button
             onClick={onClose}
-            className="absolute top-4 right-4 rounded-full bg-white/10 p-1.5 text-white/80 hover:bg-white/20 hover:text-white transition cursor-pointer"
-            title="Skip rating (don't ask again)"
+            className="absolute top-4 right-4 rounded-full bg-white/10 p-1.5 text-white/80 hover:bg-white/20 hover:text-white transition"
+            title="Skip / Cancel"
           >
             <X size={18} />
           </button>
@@ -132,10 +132,9 @@ export default function RateDriverModal({ isOpen, onClose, ride, onRated }) {
               type="button"
               onClick={onClose}
               disabled={submitting}
-              className="flex-1 rounded-xl border border-slate-200 py-2.5 text-xs font-bold text-slate-600 transition hover:bg-slate-50 disabled:opacity-50 cursor-pointer"
-              title="Dismiss rating popup for this ride"
+              className="flex-1 rounded-xl border border-slate-200 py-2.5 text-xs font-bold text-slate-600 transition hover:bg-slate-50 disabled:opacity-50"
             >
-              Skip / Maybe later
+              Cancel
             </button>
             <button
               type="submit"

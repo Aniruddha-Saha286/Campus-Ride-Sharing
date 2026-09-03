@@ -18,10 +18,13 @@ import {
   Check,
   Wallet,
   BadgeCheck,
+  ShieldAlert,
 } from "lucide-react";
 import { getMyRideStatuses } from "../api/rideStatusApi";
 import { getPendingRating } from "../api/ratingApi";
+import { getMySafetyReports } from "../api/safetyReportApi";
 import RateDriverModal from "./RateDriverModal.jsx";
+import ReportSafetyModal from "./ReportSafetyModal.jsx";
 import usePolling from "../hooks/usePolling";
 import { onRealtime } from "../api/realtimeBus";
 import { TRIP_META, TIMELINE_COLORS, formatTime12Hour } from "../utils/rideStatusConstants";
@@ -111,6 +114,9 @@ export default function CompletedRides() {
   const [searchQuery, setSearchQuery] = useState("");
   const [sortBy, setSortBy] = useState("latest");
   const [pendingRatingRide, setPendingRatingRide] = useState(null);
+  const [safetyReportRide, setSafetyReportRide] = useState(null);
+  const [safetyReportIsDriver, setSafetyReportIsDriver] = useState(false);
+  const [reportedTripIds, setReportedTripIds] = useState(new Set());
 
   const toggleExpanded = (id) =>
     setExpanded((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -118,8 +124,23 @@ export default function CompletedRides() {
   const load = async () => {
     setError("");
     try {
-      const res = await getMyRideStatuses();
-      setStatuses(res.data?.data || []);
+      const [statusesRes, safetyRes] = await Promise.allSettled([
+        getMyRideStatuses(),
+        getMySafetyReports(),
+      ]);
+
+      if (statusesRes.status === "fulfilled") {
+        setStatuses(statusesRes.value.data?.data || []);
+      } else {
+        setError(statusesRes.reason?.response?.data?.message || "Could not load completed rides.");
+      }
+
+      if (safetyRes.status === "fulfilled") {
+        const ids = new Set(
+          (safetyRes.value.data?.data || []).map((r) => String(r.trip?._id || r.trip))
+        );
+        setReportedTripIds(ids);
+      }
 
       // Check if passenger has any unrated completed ride
       try {
@@ -488,16 +509,40 @@ export default function CompletedRides() {
                       </div>
 
                       {/* Right Action */}
-                      {!isDriver && ride.poster && (
-                        <button
-                          type="button"
-                          onClick={() => setPendingRatingRide(ride)}
-                          className="flex items-center gap-1.5 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-1.5 text-xs font-bold text-amber-700 shadow-2xs transition hover:bg-amber-100 cursor-pointer"
-                        >
-                          <Star size={13} className="fill-amber-400 text-amber-400" />
-                          Rate Driver
-                        </button>
-                      )}
+                      <div className="flex items-center gap-2">
+                        {reportedTripIds.has(String(ride._id)) ? (
+                          <span
+                            className="flex items-center gap-1.5 rounded-xl border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700 shadow-2xs"
+                            title="Safety concern reported for this completed trip"
+                          >
+                            <Clock3 size={13} className="text-amber-600" />
+                            Safety Reported
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSafetyReportRide(ride);
+                              setSafetyReportIsDriver(isDriver);
+                            }}
+                            className="flex items-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50/70 px-3 py-1.5 text-xs font-semibold text-rose-700 shadow-2xs transition hover:bg-rose-100 cursor-pointer"
+                            title="Report a safety concern for this completed trip"
+                          >
+                            <ShieldAlert size={13} className="text-rose-600" />
+                            Report Safety
+                          </button>
+                        )}
+                        {!isDriver && ride.poster && (
+                          <button
+                            type="button"
+                            onClick={() => setPendingRatingRide(ride)}
+                            className="flex items-center gap-1.5 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-1.5 text-xs font-bold text-amber-700 shadow-2xs transition hover:bg-amber-100 cursor-pointer"
+                          >
+                            <Star size={13} className="fill-amber-400 text-amber-400" />
+                            Rate Driver
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
 
@@ -575,6 +620,21 @@ export default function CompletedRides() {
           ride={pendingRatingRide}
           onClose={handleDismissRating}
           onRated={handleDismissRating}
+        />
+      )}
+
+      {safetyReportRide && (
+        <ReportSafetyModal
+          isOpen={!!safetyReportRide}
+          ride={safetyReportRide}
+          isDriver={safetyReportIsDriver}
+          onClose={() => setSafetyReportRide(null)}
+          onSuccess={(tripId) => {
+            setSafetyReportRide(null);
+            if (tripId) {
+              setReportedTripIds((prev) => new Set([...prev, String(tripId)]));
+            }
+          }}
         />
       )}
     </div>

@@ -11,8 +11,8 @@ export const getMyPaymentRequests = (role) =>
 
 export const getPaymentRequest = (id) => client.get(`/payments/${id}`);
 
-export const recordBkashPayment = (id, amount) =>
-  client.post(`/payments/${id}/payments`, { method: "BKASH", amount });
+export const recordBkashPayment = (id, amount, reference) =>
+  client.post(`/payments/${id}/payments`, { method: "BKASH", amount, reference });
 
 export const recordManualPayment = (id, amount, reference) =>
   client.post(`/payments/${id}/payments`, { method: "MANUAL", amount, reference });

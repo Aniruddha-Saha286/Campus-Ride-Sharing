@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import {
   X,
   AlertTriangle,
+  QrCode,
   Wallet,
   Check,
   Loader2,
@@ -35,10 +36,6 @@ export default function DriverCancelRefundModal({ isOpen, onClose, ride, onConfi
 
   const handleCancelSubmit = (e) => {
     e.preventDefault();
-    if (hasPaidPassengers && !reason.trim()) {
-      setError("Please provide a reason for cancellation.");
-      return;
-    }
     if (hasPaidPassengers && refundMethod === "BKASH" && !trxId.trim()) {
       setError("Please enter the bKash Transaction ID (TrxID) for the refund.");
       return;
@@ -59,7 +56,7 @@ export default function DriverCancelRefundModal({ isOpen, onClose, ride, onConfi
         <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4 bg-slate-50">
           <h3 className="flex items-center gap-2 text-base font-bold text-slate-800">
             <AlertTriangle size={18} className="text-rose-600" />
-            Cancel Ride Offer
+            Cancel Ride & Process Refund
           </h3>
           <button
             onClick={onClose}
@@ -80,21 +77,15 @@ export default function DriverCancelRefundModal({ isOpen, onClose, ride, onConfi
 
           <div>
             <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-              Reason for Cancellation {hasPaidPassengers ? <span className="text-rose-500">*</span> : <span className="text-slate-400 font-normal">(Optional)</span>}
+              Reason for Cancellation <span className="text-slate-400 font-normal">(Optional)</span>
             </label>
             <textarea
               value={reason}
               onChange={(e) => setReason(e.target.value)}
-              placeholder={hasPaidPassengers ? "e.g. Car mechanical issue, class cancelled, emergency..." : "Optional reason (no paid passengers)..."}
-              rows={hasPaidPassengers ? 3 : 2}
-              required={hasPaidPassengers}
+              placeholder="Optional reason for passenger..."
+              rows={2}
               className="w-full rounded-xl border border-slate-200 p-3 text-sm text-slate-800 outline-none transition focus:border-rose-400 focus:ring-2 focus:ring-rose-100"
             />
-            <p className="text-[11px] text-slate-400 mt-1">
-              {hasPaidPassengers
-                ? "This reason will be visible to all refunded passengers."
-                : "No payments have been made. You can cancel directly."}
-            </p>
           </div>
 
           {/* Refund Section if passengers have paid */}
@@ -122,7 +113,7 @@ export default function DriverCancelRefundModal({ isOpen, onClose, ride, onConfi
                       : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
                   }`}
                 >
-                  <Smartphone size={15} />
+                  <QrCode size={15} />
                   bKash Refund
                 </button>
                 <button
@@ -177,20 +168,21 @@ export default function DriverCancelRefundModal({ isOpen, onClose, ride, onConfi
                             </span>
                           </div>
 
-                          <div className="w-full space-y-2">
+                          {/* Send Money Instructions */}
+                          <div className="space-y-2">
                             <p className="text-[11px] font-semibold text-slate-600">
-                              Send <strong>৳{amount}</strong> refund to passenger's bKash number:
+                              Go to bKash App &gt; <strong>Send Money</strong> &gt; Send <strong>৳{amount}</strong> to passenger's number:
                             </p>
 
                             <div className="flex items-center justify-between rounded-xl bg-slate-50 border border-slate-200 px-3 py-2 text-xs">
-                              <span className="font-mono font-bold text-slate-800 flex items-center gap-1.5 text-sm">
-                                <Smartphone size={15} className="text-[#d12053]" />
+                              <span className="font-mono font-bold text-slate-800 flex items-center gap-1.5">
+                                <Smartphone size={14} className="text-[#d12053]" />
                                 {passengerPhone}
                               </span>
                               <button
                                 type="button"
                                 onClick={() => handleCopy(passengerPhone)}
-                                className={`flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-bold transition cursor-pointer ${
+                                className={`flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-bold transition ${
                                   copiedPhone === passengerPhone
                                     ? "bg-emerald-600 text-white"
                                     : "bg-white border border-slate-200 text-slate-700 hover:bg-slate-100"
@@ -198,11 +190,11 @@ export default function DriverCancelRefundModal({ isOpen, onClose, ride, onConfi
                               >
                                 {copiedPhone === passengerPhone ? (
                                   <>
-                                    <Check size={12} /> Copied!
+                                    <Check size={12} /> Copied
                                   </>
                                 ) : (
                                   <>
-                                    <Copy size={12} /> Copy
+                                    <Copy size={12} /> Copy Number
                                   </>
                                 )}
                               </button>

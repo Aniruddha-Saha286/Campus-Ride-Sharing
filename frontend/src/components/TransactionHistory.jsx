@@ -134,15 +134,15 @@ export default function TransactionHistory() {
     });
   }, [data, roleTab, sortBy]);
 
-  const filteredTotals = useMemo(() => {
+  const allTotals = useMemo(() => {
     let received = 0;
     let paid = 0;
-    filteredData.forEach((t) => {
+    data.forEach((t) => {
       if (t.direction === "received") received += t.amount || 0;
       else if (t.direction === "paid") paid += t.amount || 0;
     });
     return { received, paid, net: received - paid };
-  }, [filteredData]);
+  }, [data]);
 
   const roleCounts = useMemo(() => {
     let driver = 0;
@@ -173,7 +173,7 @@ export default function TransactionHistory() {
   };
 
   const downloadPdf = () => {
-    downloadTransactionHistoryPdf({ data: filteredData, totals: filteredTotals });
+    downloadTransactionHistoryPdf({ data: filteredData, totals: allTotals });
   };
 
   const downloadReceipt = async (t) => {
@@ -342,15 +342,15 @@ export default function TransactionHistory() {
         <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
           <div className="rounded-xl bg-emerald-50 px-4 py-3">
             <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700">Total received</p>
-            <p className="mt-0.5 text-sm font-bold text-emerald-800">{formatTaka(filteredTotals.received)}</p>
+            <p className="mt-0.5 text-sm font-bold text-emerald-800">{formatTaka(allTotals.received)}</p>
           </div>
           <div className="rounded-xl bg-rose-50 px-4 py-3">
             <p className="text-[11px] font-semibold uppercase tracking-wide text-rose-700">Total paid</p>
-            <p className="mt-0.5 text-sm font-bold text-rose-800">{formatTaka(filteredTotals.paid)}</p>
+            <p className="mt-0.5 text-sm font-bold text-rose-800">{formatTaka(allTotals.paid)}</p>
           </div>
           <div className="rounded-xl bg-slate-100 px-4 py-3">
             <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-600">Net balance</p>
-            <p className="mt-0.5 text-sm font-bold text-slate-800">{formatTaka(filteredTotals.net)}</p>
+            <p className="mt-0.5 text-sm font-bold text-slate-800">{formatTaka(allTotals.net)}</p>
           </div>
         </div>
 

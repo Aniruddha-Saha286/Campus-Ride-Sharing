@@ -11,11 +11,11 @@ import {
   User,
   Settings,
   Satellite,
-  CheckCircle2,
   Clock3,
   ChevronLeft,
   ChevronRight,
   Users,
+  ShieldAlert,
 } from "lucide-react";
 import SidebarItem from "./SidebarItem.jsx";
 
@@ -24,15 +24,7 @@ const NAV_ITEMS = [
   { to: "/rides/new", icon: CarFront, label: "Request Ride" },
   { to: "/find-ride", icon: Search, label: "Find Ride" },
   { to: "/my-rides", icon: ListOrdered, label: "My Rides" },
-  {
-    icon: Wallet,
-    label: "Payments",
-    children: [
-      { to: "/payments", icon: Wallet, label: "My Payments" },
-      { to: "/recent-transactions", icon: Clock3, label: "Recent Transactions" },
-      { to: "/transactions", icon: History, label: "Transaction History" },
-    ],
-  },
+  { to: "/transactions", icon: Wallet, label: "Payments" },
   {
     icon: History,
     label: "Ride History",
@@ -43,7 +35,7 @@ const NAV_ITEMS = [
   },
   { to: "/recurring", icon: Repeat2, label: "Recurring Commute" },
   { to: "/ride-tracker", icon: Satellite, label: "Ride Tracker" },
-  { to: "/completed-rides", icon: CheckCircle2, label: "Completed Rides" },
+  { to: "/my-safety-reports", icon: ShieldAlert, label: "Safety Reports" },
   { divider: true },
   { to: "/profile", icon: User, label: "Profile" },
 ];

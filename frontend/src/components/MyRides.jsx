@@ -22,13 +22,10 @@ import {
   MessageSquare,
   Pencil,
   Star,
+  QrCode,
   RotateCcw,
   AlertCircle,
-  ArrowUpDown,
-  Search,
-  Layers,
-  SlidersHorizontal,
-  Play,
+  ShieldAlert,
 } from "lucide-react";
 import {
   getMyRides,
@@ -48,9 +45,11 @@ import AcceptedContactModal from "./AcceptedContactModal.jsx";
 import RideChatModal from "./RideChatModal.jsx";
 import EditRideModal from "./EditRideModal.jsx";
 import PaymentOptionModal from "./PaymentOptionModal.jsx";
-import BkashPaymentManagement from "./BkashPaymentManagement.jsx";
+import BkashQrPaymentModal from "./BkashQrPaymentModal.jsx";
 import DriverCancelRefundModal from "./DriverCancelRefundModal.jsx";
 import DriverProcessRefundModal from "./DriverProcessRefundModal.jsx";
+import ReportSafetyModal from "./ReportSafetyModal.jsx";
+import { getMySafetyReports } from "../api/safetyReportApi";
 import usePolling from "../hooks/usePolling";
 import { formatTime12Hour } from "../utils/rideStatusConstants";
 
@@ -133,29 +132,54 @@ function RideDetailPanel({ ride }) {
   );
 }
 
-function MapDetailBar({ ride, expanded, onToggle }) {
+function MapDetailBar({ ride, expanded, onToggle, onReportSafety, isReported = false }) {
+  if (!ride) return null;
+  const mapUrl = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(ride.pickup)}&destination=${encodeURIComponent(ride.dropoff)}`;
+
   return (
-    <div className="mt-3 flex items-center gap-2 border-t border-slate-50 pt-3">
-      <a
-        href={mapsUrl(ride)}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="flex items-center gap-1.5 rounded-lg border border-brand-200 bg-brand-50 px-3 py-1.5 text-xs font-semibold text-brand-700 transition hover:bg-brand-100"
-      >
-        <Map size={13} />
-        View in map
-      </a>
-      <button
-        onClick={onToggle}
-        className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50"
-      >
-        <FileText size={13} />
-        {expanded ? "Hide details" : "Show details"}
-        {expanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-      </button>
+    <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <a
+          href={mapUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center gap-1.5 rounded-lg border border-brand-200 bg-brand-50 px-3 py-1.5 text-xs font-semibold text-brand-700 transition hover:bg-brand-100"
+        >
+          <Map size={13} />
+          View in map
+        </a>
+        <button
+          onClick={onToggle}
+          className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50"
+        >
+          <FileText size={13} />
+          {expanded ? "Hide details" : "Show details"}
+          {expanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+        </button>
+      </div>
+
+      {isReported ? (
+        <span
+          className="flex items-center gap-1 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs font-semibold text-amber-700 shadow-2xs"
+          title="Safety concern reported for this trip"
+        >
+          <Clock3 size={12} className="text-amber-600" />
+          Safety Reported
+        </span>
+      ) : onReportSafety ? (
+        <button
+          type="button"
+          onClick={() => onReportSafety(ride)}
+          className="flex items-center gap-1 rounded-lg border border-rose-200 bg-rose-50/70 px-2.5 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-100 transition shadow-2xs cursor-pointer"
+          title="Report a safety concern for this trip"
+        >
+          <ShieldAlert size={13} className="text-rose-600" />
+          Report Safety
+        </button>
+      ) : null}
     </div>
   );
-}
+};
 
 export default function MyRides() {
   const [my, setMy] = useState(null);
@@ -169,34 +193,16 @@ export default function MyRides() {
   const [driverRefundTarget, setDriverRefundTarget] = useState(null);
   const [editRideTarget, setEditRideTarget] = useState(null);
   const [chatTarget, setChatTarget] = useState(null);
+  const [safetyReportRide, setSafetyReportRide] = useState(null);
+  const [safetyReportIsDriver, setSafetyReportIsDriver] = useState(false);
+  const [reportedTripIds, setReportedTripIds] = useState(new Set());
   const [expandedIds, setExpandedIds] = useState({});
   const [paymentOptionTarget, setPaymentOptionTarget] = useState(null);
-  const [bkashPaymentTarget, setBkashPaymentTarget] = useState(null);
+  const [bkashQrTarget, setBkashQrTarget] = useState(null);
   const [paymentBusy, setPaymentBusy] = useState(false);
   const [seatEditTarget, setSeatEditTarget] = useState(null);
   const [selectedSeats, setSelectedSeats] = useState(1);
-  const [dismissedIds, setDismissedIds] = useState(() => {
-    try {
-      return new Set(JSON.parse(localStorage.getItem("dismissedRideIds") || "[]"));
-    } catch {
-      return new Set();
-    }
-  });
-  const [filterTab, setFilterTab] = useState("all");
-  const [sortBy, setSortBy] = useState("latest");
-  const [searchQuery, setSearchQuery] = useState("");
   const navigate = useNavigate();
-
-  const dismissRide = (id) => {
-    setDismissedIds((prev) => {
-      const next = new Set(prev);
-      next.add(String(id));
-      try {
-        localStorage.setItem("dismissedRideIds", JSON.stringify([...next]));
-      } catch {}
-      return next;
-    });
-  };
 
   const handleSaveSeats = async () => {
     if (!seatEditTarget) return;
@@ -228,11 +234,21 @@ export default function MyRides() {
     setPaymentOptionTarget({ booking, ride, payment });
   };
 
-  const handleSelectBkashFromOptions = () => {
-    if (!paymentOptionTarget) return;
-    const target = { ...paymentOptionTarget };
-    setPaymentOptionTarget(null);
-    setBkashPaymentTarget(target);
+  const handleSelectBkashFromOptions = async (trxId) => {
+    const paymentId = paymentOptionTarget?.payment?._id || paymentOptionTarget?.booking?.payment?._id;
+    if (!paymentId) return;
+    setPaymentBusy(true);
+    setError("");
+    try {
+      await selectPaymentMethod(paymentId, "BKASH", trxId);
+      setPaymentOptionTarget(null);
+      await load();
+    } catch (err) {
+      setError(err.response?.data?.message || "Could not submit bKash payment.");
+      throw err;
+    } finally {
+      setPaymentBusy(false);
+    }
   };
 
   const handleSelectManualFromOptions = async () => {
@@ -246,22 +262,6 @@ export default function MyRides() {
       await load();
     } catch (err) {
       setError(err.response?.data?.message || "Could not select manual payment.");
-    } finally {
-      setPaymentBusy(false);
-    }
-  };
-
-  const handleConfirmBkashPayment = async (trxId) => {
-    const paymentId = bkashPaymentTarget?.payment?._id || bkashPaymentTarget?.booking?.payment?._id;
-    if (!paymentId) return;
-    setPaymentBusy(true);
-    setError("");
-    try {
-      await selectPaymentMethod(paymentId, "BKASH", trxId);
-      setBkashPaymentTarget(null);
-      await load();
-    } catch (err) {
-      setError(err.response?.data?.message || "Could not submit bKash payment.");
       throw err;
     } finally {
       setPaymentBusy(false);
@@ -316,8 +316,23 @@ export default function MyRides() {
   const load = async () => {
     setError("");
     try {
-      const res = await getMyRides();
-      setMy(res.data.data);
+      const [ridesRes, safetyRes] = await Promise.allSettled([
+        getMyRides(),
+        getMySafetyReports(),
+      ]);
+
+      if (ridesRes.status === "fulfilled") {
+        setMy(ridesRes.value.data.data);
+      } else {
+        setError(ridesRes.reason?.response?.data?.message || "Could not load rides.");
+      }
+
+      if (safetyRes.status === "fulfilled") {
+        const ids = new Set(
+          (safetyRes.value.data?.data || []).map((r) => String(r.trip?._id || r.trip))
+        );
+        setReportedTripIds(ids);
+      }
     } catch (err) {
       setError(err.response?.data?.message || "Could not load rides.");
     } finally {
@@ -375,6 +390,35 @@ export default function MyRides() {
       setError(err.response?.data?.message || "Could not cancel the request.");
     } finally {
       setBusy("");
+    }
+  };
+
+  const handleDriverCancelRideClick = async (ride) => {
+    const paidRequests = (ride.requests || []).filter(
+      (r) => r.payment && (r.payment.amountPaid > 0 || r.payment.status === "PAID" || r.paymentStatus === "SETTLED")
+    );
+
+    if (paidRequests.length > 0) {
+      // Passenger paid for that ride: Driver needs to refund via bKash or Manual
+      setCancelRideTarget(ride);
+    } else {
+      // No passenger booked OR all passengers cancelled (no paid passenger)
+      // Cancel directly without requiring any reason
+      if (!window.confirm("Are you sure you want to cancel this ride?")) return;
+      setBusy(ride._id);
+      setError("");
+      try {
+        const res = await cancelRide(ride._id, "");
+        const fine = res.data?.cancellationFine;
+        if (fine > 0) {
+          setError(`Ride cancelled. A late cancellation fine of ${formatTaka(fine)} has been applied (past 15 minutes).`);
+        }
+        await load();
+      } catch (err) {
+        setError(err.response?.data?.message || "Could not cancel the ride.");
+      } finally {
+        setBusy("");
+      }
     }
   };
 
@@ -450,66 +494,6 @@ export default function MyRides() {
     </div>
   );
 
-  const rawRequested = my?.requested || [];
-  const activeRequested = rawRequested.filter((req) => !dismissedIds.has(String(req._id)));
-  const rawPosted = my?.posted || [];
-
-  const matchesSearch = (item, isRequested) => {
-    if (!searchQuery.trim()) return true;
-    const q = searchQuery.toLowerCase().trim();
-    const ride = isRequested ? item.ride || {} : item;
-    const posterName = isRequested ? item.ride?.poster?.name || "" : "";
-    const pickup = ride.pickup || "";
-    const dropoff = ride.dropoff || "";
-    const notes = ride.notes || "";
-    const riderNames = (ride.requests || []).map((r) => r.rider?.name || "").join(" ");
-    return (
-      pickup.toLowerCase().includes(q) ||
-      dropoff.toLowerCase().includes(q) ||
-      notes.toLowerCase().includes(q) ||
-      posterName.toLowerCase().includes(q) ||
-      riderNames.toLowerCase().includes(q)
-    );
-  };
-
-  const sortItems = (items, isRequested) => {
-    return [...items].sort((a, b) => {
-      const aRide = isRequested ? a.ride || {} : a;
-      const bRide = isRequested ? b.ride || {} : b;
-      const aDate = new Date(a.createdAt || aRide.createdAt || 0).getTime();
-      const bDate = new Date(b.createdAt || bRide.createdAt || 0).getTime();
-
-      if (sortBy === "latest") return bDate - aDate;
-      if (sortBy === "oldest") return aDate - bDate;
-      if (sortBy === "departure_asc") {
-        return (aRide.departureTime || "").localeCompare(bRide.departureTime || "");
-      }
-      if (sortBy === "departure_desc") {
-        return (bRide.departureTime || "").localeCompare(aRide.departureTime || "");
-      }
-      if (sortBy === "fare_asc") {
-        return (aRide.charge || 0) - (bRide.charge || 0);
-      }
-      if (sortBy === "fare_desc") {
-        return (bRide.charge || 0) - (aRide.charge || 0);
-      }
-      return 0;
-    });
-  };
-
-  const displayedPosted = sortItems(
-    rawPosted.filter((item) => matchesSearch(item, false)),
-    false
-  );
-
-  const displayedRequested = sortItems(
-    activeRequested.filter((item) => matchesSearch(item, true)),
-    true
-  );
-
-  const totalActiveRides = rawPosted.length + activeRequested.length;
-  const totalDisplayedRides = displayedPosted.length + displayedRequested.length;
-
   return (
     <div className="space-y-6">
       {error && (
@@ -518,204 +502,61 @@ export default function MyRides() {
         </div>
       )}
 
-      {my && totalActiveRides > 0 && (
+      {my && (my.posted.length > 0 || my.requested.length > 0) && (
         <>
-          {/* SORT & FILTER TOOLBAR */}
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between rounded-2xl border border-slate-100 bg-white p-3.5 shadow-card">
-            {/* Filter Tabs */}
-            <div className="flex flex-wrap items-center gap-1.5">
-              <button
-                type="button"
-                onClick={() => setFilterTab("all")}
-                className={`flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold transition cursor-pointer ${
-                  filterTab === "all"
-                    ? "bg-slate-900 text-white shadow-xs"
-                    : "bg-slate-50 text-slate-600 hover:bg-slate-100"
-                }`}
-              >
-                <Layers size={13} />
-                All Rides
-                <span
-                  className={`ml-0.5 rounded-full px-1.5 py-0.2 text-[10px] font-extrabold ${
-                    filterTab === "all" ? "bg-white/20 text-white" : "bg-slate-200 text-slate-700"
-                  }`}
-                >
-                  {totalActiveRides}
-                </span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setFilterTab("posted")}
-                className={`flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold transition cursor-pointer ${
-                  filterTab === "posted"
-                    ? "bg-brand-600 text-white shadow-xs"
-                    : "bg-slate-50 text-slate-600 hover:bg-slate-100"
-                }`}
-              >
-                <CarFront size={13} />
-                Posted (Driver)
-                <span
-                  className={`ml-0.5 rounded-full px-1.5 py-0.2 text-[10px] font-extrabold ${
-                    filterTab === "posted" ? "bg-white/20 text-white" : "bg-slate-200 text-slate-700"
-                  }`}
-                >
-                  {rawPosted.length}
-                </span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setFilterTab("requested")}
-                className={`flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold transition cursor-pointer ${
-                  filterTab === "requested"
-                    ? "bg-indigo-600 text-white shadow-xs"
-                    : "bg-slate-50 text-slate-600 hover:bg-slate-100"
-                }`}
-              >
-                <Users size={13} />
-                Requested (Passenger)
-                <span
-                  className={`ml-0.5 rounded-full px-1.5 py-0.2 text-[10px] font-extrabold ${
-                    filterTab === "requested" ? "bg-white/20 text-white" : "bg-slate-200 text-slate-700"
-                  }`}
-                >
-                  {activeRequested.length}
-                </span>
-              </button>
-            </div>
-
-            {/* Search & Sort Controls */}
-            <div className="flex flex-wrap items-center gap-2">
-              {/* Search Input */}
-              <div className="relative min-w-[150px] flex-1 sm:w-48 sm:flex-initial">
-                <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search location / name..."
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50/50 py-1.5 pl-8 pr-7 text-xs text-slate-800 placeholder-slate-400 outline-none transition focus:border-brand-500 focus:bg-white focus:ring-2 focus:ring-brand-100"
-                />
-                {searchQuery && (
-                  <button
-                    type="button"
-                    onClick={() => setSearchQuery("")}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
-                  >
-                    <X size={12} />
-                  </button>
-                )}
-              </div>
-
-              {/* Sort Select */}
-              <div className="relative flex items-center">
-                <ArrowUpDown size={13} className="pointer-events-none absolute left-3 text-slate-400" />
-                <select
-                  value={sortBy}
-                  onChange={(e) => setSortBy(e.target.value)}
-                  aria-label="Sort rides by"
-                  className="rounded-xl border border-slate-200 bg-white py-1.5 pl-8 pr-7 text-xs font-bold text-slate-700 shadow-2xs outline-none transition hover:border-slate-300 focus:border-brand-500 focus:ring-2 focus:ring-brand-100 cursor-pointer"
-                >
-                  <option value="latest">Latest First (Newest)</option>
-                  <option value="oldest">Oldest First</option>
-                  <option value="departure_asc">Departure (Earliest)</option>
-                  <option value="departure_desc">Departure (Latest)</option>
-                  <option value="fare_asc">Fare (Lowest First)</option>
-                  <option value="fare_desc">Fare (Highest First)</option>
-                </select>
-              </div>
-            </div>
-          </div>
-
-          {/* SEARCH EMPTY STATE */}
-          {searchQuery.trim() && totalDisplayedRides === 0 && (
-            <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-white px-6 py-10 text-center shadow-card">
-              <Search size={24} className="text-slate-300" />
-              <p className="mt-2 text-sm font-semibold text-slate-700">No matching rides found</p>
-              <p className="mt-1 text-xs text-slate-400">
-                No rides matched "{searchQuery}". Try changing your search term.
-              </p>
-              <button
-                type="button"
-                onClick={() => {
-                  setSearchQuery("");
-                  setFilterTab("all");
-                }}
-                className="mt-3 text-xs font-bold text-brand-600 hover:underline cursor-pointer"
-              >
-                Clear search & filters
-              </button>
-            </div>
-          )}
-
           {/* DRIVER POSTED RIDES */}
-          {(filterTab === "all" || filterTab === "posted") && displayedPosted.length > 0 && (
+          {my.posted.length > 0 && (
             <section>
               <h2 className="mb-3 flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-slate-500">
-                <CarFront size={15} /> Rides I posted ({displayedPosted.length})
+                <CarFront size={15} /> Rides I posted
               </h2>
               <div className="space-y-4">
-                {displayedPosted.map((ride) => (
-                  <div key={ride._id} className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-xs hover:shadow-md transition-all">
-                    <div className="p-5 space-y-4">
-                      {/* 1. Header: Ride Offer Info & Controls */}
-                      <div className="flex flex-wrap items-center justify-between gap-3">
-                        <div className="flex items-center gap-2">
-                          <span className="rounded-md bg-brand-50 border border-brand-200/60 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-brand-700">
-                            Your Ride Offer
-                          </span>
-                          <span className="text-xs font-semibold text-slate-400">
-                            Created {new Date(ride.createdAt || Date.now()).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                          </span>
+                {my.posted.map((ride) => (
+                  <div key={ride._id} className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-card">
+                    <div className="p-5">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          {rideLinePills(ride)}
+                          <p className="mt-2 text-xs text-slate-400">
+                            {ride.seatsLeft} of {ride.seats} seats left
+                            {ride.charge > 0 && (
+                              <span className="ml-2 font-semibold text-slate-600">· {formatTaka(ride.charge)} / seat</span>
+                            )}
+                            {ride.charge === 0 && (
+                              <span className="ml-2 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700">Free</span>
+                            )}
+                          </p>
                         </div>
-
-                        <div className="flex items-center gap-2">
-                          {ride.tripStatus === "ongoing" && (
-                            <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 border border-amber-200 px-2.5 py-1 text-xs font-bold text-amber-700">
-                              <Play size={11} className="text-amber-500 animate-pulse" />
-                              In Transit
-                            </span>
-                          )}
-                          <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-700">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
                             {ride.requests.length} request{ride.requests.length === 1 ? "" : "s"}
                           </span>
                           {ride.status === "open" && (
                             <>
-                              {ride.tripStatus === "ongoing" ? (
-                                <span
-                                  title="Cannot edit: ride is already in transit (started)"
-                                  className="flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-400 cursor-not-allowed"
-                                >
-                                  <Pencil size={12} />
-                                  Started
-                                </span>
-                              ) : ride.seatsLeft > 0 ? (
+                              {ride.seatsLeft > 0 ? (
                                 <button
-                                  type="button"
                                   onClick={() => setEditRideTarget(ride)}
                                   disabled={busy === ride._id}
-                                  className="flex items-center gap-1 rounded-xl border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-bold text-blue-700 shadow-2xs transition hover:bg-blue-100 disabled:opacity-60 cursor-pointer"
+                                  className="flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 shadow-sm transition hover:border-blue-300 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60"
                                 >
-                                  <Pencil size={12} />
+                                  <Pencil size={13} />
                                   Edit offer
                                 </button>
                               ) : (
                                 <span
                                   title="Cannot edit: this ride offer is fully booked"
-                                  className="flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-400 cursor-not-allowed"
+                                  className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-400 cursor-not-allowed"
                                 >
-                                  <Pencil size={12} />
+                                  <Pencil size={13} />
                                   Fully booked
                                 </span>
                               )}
                               <button
-                                type="button"
-                                onClick={() => setCancelRideTarget(ride)}
+                                onClick={() => handleDriverCancelRideClick(ride)}
                                 disabled={busy === ride._id}
-                                className="flex items-center gap-1 rounded-xl border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-bold text-rose-600 shadow-2xs transition hover:bg-rose-100 disabled:opacity-60 cursor-pointer"
+                                className="flex items-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-600 shadow-sm transition hover:border-rose-300 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
                               >
-                                {busy === ride._id ? <Loader2 className="animate-spin" size={12} /> : <X size={12} />}
+                                {busy === ride._id ? <Loader2 className="animate-spin" size={13} /> : <X size={13} />}
                                 Cancel ride
                               </button>
                             </>
@@ -723,95 +564,39 @@ export default function MyRides() {
                         </div>
                       </div>
 
-                      {/* 2. Journey & Route Card */}
-                      <div className="rounded-2xl border border-slate-200/70 bg-slate-50/60 p-4 space-y-3.5">
-                        {/* Route line */}
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-                          <div className="flex items-center gap-2 flex-wrap min-w-0">
-                            <span className="inline-flex items-center gap-1.5 rounded-xl bg-white border border-slate-200/80 px-3 py-1.5 text-xs font-bold text-slate-800 shadow-2xs">
-                              <span className="h-2 w-2 rounded-full bg-emerald-500 shrink-0"></span>
-                              <span className="truncate max-w-[200px] sm:max-w-xs">{shortLabel(ride.pickup)}</span>
-                            </span>
-                            <Navigation size={13} className="text-slate-400 shrink-0 mx-0.5" />
-                            <span className="inline-flex items-center gap-1.5 rounded-xl bg-white border border-slate-200/80 px-3 py-1.5 text-xs font-bold text-slate-800 shadow-2xs">
-                              <span className="h-2 w-2 rounded-full bg-rose-500 shrink-0"></span>
-                              <span className="truncate max-w-[200px] sm:max-w-xs">{shortLabel(ride.dropoff)}</span>
-                            </span>
-                          </div>
+                      <MapDetailBar
+                        ride={ride}
+                        expanded={!!expandedIds[ride._id]}
+                        onToggle={() => toggleExpanded(ride._id)}
+                        isReported={reportedTripIds.has(String(ride._id))}
+                        onReportSafety={
+                          (ride.requests || []).some((req) => req.status === "accepted")
+                            ? (r) => {
+                                setSafetyReportRide(r);
+                                setSafetyReportIsDriver(true);
+                              }
+                            : null
+                        }
+                      />
 
-                          <div className="flex items-center gap-3 shrink-0 text-xs font-semibold text-slate-600">
-                            <span className="flex items-center gap-1 text-slate-700 bg-white border border-slate-200/80 px-2.5 py-1 rounded-lg">
-                              <Clock3 size={13} className="text-blue-600" />
-                              {formatTime12Hour(ride.departureTime)}
-                            </span>
-                          </div>
-                        </div>
-
-                        {/* Trip specs strip (Capacity & Price) */}
-                        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200/60 pt-3 text-xs">
-                          <div className="flex items-center gap-2">
-                            <Users size={13} className="text-slate-400" />
-                            <span className="font-bold text-slate-700">
-                              {ride.seatsLeft} of {ride.seats} seats available
-                            </span>
-                            {ride.seatsLeft === 0 && (
-                              <span className="rounded-full bg-amber-100 text-amber-800 px-2 py-0.5 text-[10px] font-bold">
-                                Full
-                              </span>
-                            )}
-                          </div>
-
-                          <div className="flex items-center gap-2">
-                            <span className="font-bold text-slate-700 flex items-center gap-1">
-                              <Wallet size={13} className="text-brand-500" />
-                              <span>{ride.charge > 0 ? `${formatTaka(ride.charge)} / seat` : "Free Ride"}</span>
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* 3. Utilities Bar */}
-                      <div className="flex items-center gap-2 pt-1">
-                        <a
-                          href={mapsUrl(ride)}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 hover:border-slate-300 shadow-2xs"
-                        >
-                          <Map size={13} className="text-slate-500" />
-                          View in map
-                        </a>
-                        <button
-                          type="button"
-                          onClick={() => toggleExpanded(ride._id)}
-                          className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 hover:border-slate-300 shadow-2xs cursor-pointer"
-                        >
-                          <FileText size={13} className="text-slate-500" />
-                          {expandedIds[ride._id] ? "Hide details" : "Show details"}
-                          {expandedIds[ride._id] ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-                        </button>
-                      </div>
-
-                      {/* 4. Passenger Bookings / Requests */}
                       {ride.requests.length === 0 ? (
-                        <p className="rounded-xl bg-slate-50 px-4 py-3 text-xs text-slate-400 text-center">
-                          No seat requests yet. When students request a seat, they will appear here.
+                        <p className="mt-4 rounded-xl bg-slate-50 px-4 py-3 text-xs text-slate-400">
+                          No one has requested a seat yet.
                         </p>
                       ) : (
-                        <div className="space-y-3 pt-2">
-                          <p className="text-xs font-bold uppercase tracking-wider text-slate-400">
-                            Passenger Requests ({ride.requests.length})
-                          </p>
+                        <div className="mt-4 space-y-3">
                           {ride.requests.map((req) => {
                             const meta = STATUS_META[req.status] || STATUS_META.pending;
                             const payment = req.payment;
                             const posterId = String(ride.poster?._id || ride.poster || "");
                             const refundRequesterId = String(payment?.refundRequestedBy || "");
 
+                            // When driver cancelled the ride or initiated refund, OR when driver processed the passenger's refund:
                             const isDriverCancelledWaitingPassenger =
                               payment?.status === "REFUND_REQUESTED" &&
                               (ride.status === "pending_cancellation" || (posterId && refundRequesterId === posterId) || payment?.driverRefundConfirmedAt);
 
+                            // When passenger requested refund on an active ride and driver has NOT refunded yet:
                             const isRefundRequestedByPassenger =
                               payment?.status === "REFUND_REQUESTED" &&
                               ride.status !== "pending_cancellation" &&
@@ -822,173 +607,153 @@ export default function MyRides() {
                             return (
                               <div
                                 key={req._id}
-                                className="rounded-2xl border border-slate-200/70 bg-slate-50/50 p-4 space-y-3"
+                                className="rounded-xl border border-slate-100 bg-slate-50/60 px-4 py-3"
                               >
-                                <div className="flex flex-wrap items-center justify-between gap-3">
+                                <div className="flex flex-wrap items-center justify-between gap-y-3">
                                   <div className="flex items-center gap-3">
                                     {avatar(req.rider)}
                                     <div>
-                                      <div className="flex items-center gap-2">
-                                        {nameLine(req.rider)}
-                                        {req.seats > 1 && (
-                                          <span className="rounded-md bg-blue-50 text-blue-700 border border-blue-200/60 px-2 py-0.5 text-[10px] font-bold">
-                                            {req.seats} seats
-                                          </span>
-                                        )}
-                                      </div>
-                                      <p className="text-xs text-slate-500 mt-0.5">
+                                      {nameLine(req.rider)}
+                                      <p className="text-xs text-slate-500">
                                         {req.rider?.department}, {req.rider?.year}
+                                        {req.seats > 1 && (
+                                          <span className="ml-2 font-bold text-slate-700">· {req.seats} seats</span>
+                                        )}
                                       </p>
                                     </div>
                                   </div>
-
                                   <div className="flex flex-wrap items-center gap-2">
-                                    <span className={`rounded-full px-3 py-1 text-xs font-bold border ${meta.classes}`}>
+                                    <span className={`rounded-full px-3 py-1 text-xs font-semibold border ${meta.classes}`}>
                                       {meta.label}
                                     </span>
 
                                     {/* REFUND BADGES ON DRIVER SIDE */}
                                     {payment?.status === "REFUNDED" && (
-                                      <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 border border-slate-200 px-2.5 py-0.5 text-xs font-extrabold text-slate-700">
-                                        <Check size={11} /> Refunded
+                                      <span className="inline-flex items-center gap-1 rounded-lg bg-slate-100 border border-slate-200 px-2.5 py-1 text-xs font-extrabold text-slate-700">
+                                        <Check size={12} /> Refunded
                                       </span>
                                     )}
 
                                     {isDriverCancelledWaitingPassenger && (
-                                      <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 border border-amber-200 px-2.5 py-0.5 text-xs font-bold text-amber-800">
-                                        <Clock3 size={11} className="animate-spin text-amber-500" />
-                                        Waiting for approval
+                                      <span className="inline-flex items-center gap-1 rounded-lg bg-amber-50 border border-amber-200 px-2.5 py-1 text-xs font-bold text-amber-800">
+                                        <Clock3 size={12} className="animate-spin text-amber-500" />
+                                        Pending
                                       </span>
                                     )}
 
                                     {isRefundRequestedByPassenger && (
                                       <div className="flex flex-wrap items-center gap-1.5">
-                                        <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 border border-rose-200 px-2.5 py-0.5 text-xs font-bold text-rose-700">
-                                          <AlertCircle size={11} className="text-rose-500" />
-                                          Refund Requested
+                                        <span className="inline-flex items-center gap-1 rounded-lg bg-rose-50 border border-rose-200 px-2.5 py-1 text-xs font-bold text-rose-700">
+                                          <AlertCircle size={12} className="text-rose-500" />
+                                          Passenger wants to cancel ride
                                         </span>
                                         <button
-                                          type="button"
                                           onClick={() => setDriverRefundTarget(req)}
-                                          className="flex items-center gap-1 rounded-xl bg-[#d12053] px-3 py-1 text-xs font-bold text-white shadow-xs transition hover:bg-[#b01742] animate-pulse cursor-pointer"
+                                          className="flex items-center gap-1 rounded-lg bg-[#d12053] px-3 py-1.5 text-xs font-bold text-white shadow-xs transition hover:bg-[#b01742] animate-pulse cursor-pointer"
+                                          title="Passenger requested cancellation and refund. Click to refund via bKash or Manual Cash."
                                         >
-                                          <RotateCcw size={12} />
+                                          <RotateCcw size={13} />
                                           Refund Passenger ({formatTaka(payment.amountPaid || payment.originalAmount)})
                                         </button>
                                       </div>
                                     )}
 
                                     {req.status === "pending" && (
-                                      <div className="flex items-center gap-2">
+                                      <>
                                         <button
-                                          type="button"
                                           onClick={() => respond(ride._id, req._id, "accepted")}
                                           disabled={busy === req._id}
-                                          className="flex items-center gap-1 rounded-xl bg-emerald-600 px-3.5 py-1.5 text-xs font-bold text-white shadow-xs transition hover:bg-emerald-700 disabled:opacity-60 cursor-pointer"
+                                          className="flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-700 disabled:opacity-60"
                                         >
-                                          {busy === req._id ? <Loader2 className="animate-spin" size={12} /> : <Check size={12} />}
+                                          {busy === req._id ? <Loader2 className="animate-spin" size={13} /> : <Check size={13} />}
                                           Accept
                                         </button>
                                         <button
-                                          type="button"
                                           onClick={() => respond(ride._id, req._id, "declined")}
                                           disabled={busy === req._id}
-                                          className="flex items-center gap-1 rounded-xl border border-rose-200 bg-white px-3 py-1.5 text-xs font-bold text-rose-600 shadow-2xs transition hover:bg-rose-50 disabled:opacity-60 cursor-pointer"
+                                          className="flex items-center gap-1 rounded-lg border border-rose-200 bg-white px-3 py-1.5 text-xs font-semibold text-rose-600 transition hover:bg-rose-50 disabled:opacity-60"
                                         >
-                                          <X size={12} />
+                                          <X size={13} />
                                           Decline
                                         </button>
-                                      </div>
+                                      </>
                                     )}
 
                                     {req.status === "accepted" && (
-                                      <div className="flex flex-wrap items-center gap-2">
+                                      <>
                                         {ride.charge > 0 && payment && (
                                           <>
                                             {payment.status === "PAID" || (req.paymentStatus === "SETTLED" && (!payment.remainingAmount || payment.remainingAmount === 0)) ? (
-                                              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100/80 border border-emerald-200/80 px-2.5 py-0.5 text-xs font-extrabold text-emerald-800">
-                                                <Check size={11} /> Paid
+                                              <span className="inline-flex items-center gap-1 rounded-lg bg-emerald-50 border border-emerald-200/80 px-2.5 py-1 text-xs font-extrabold text-emerald-700">
+                                                <Check size={13} /> Paid
                                               </span>
                                             ) : payment.amountPaid > 0 && payment.remainingAmount > 0 && payment.status !== "REFUND_REQUESTED" && payment.status !== "REFUNDED" ? (
-                                              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100/80 border border-emerald-200/80 px-2.5 py-0.5 text-xs font-extrabold text-emerald-800">
-                                                <Check size={11} /> Paid: {formatTaka(payment.amountPaid)}
+                                              <span className="inline-flex items-center gap-1 rounded-lg bg-emerald-50 border border-emerald-200/80 px-2.5 py-1 text-xs font-extrabold text-emerald-700">
+                                                <Check size={13} /> Paid: {formatTaka(payment.amountPaid)}
                                               </span>
                                             ) : payment.status !== "REFUND_REQUESTED" && payment.status !== "REFUNDED" ? (
-                                              <div className="flex flex-wrap items-center gap-2">
+                                              <div className="flex flex-wrap items-center gap-1.5">
                                                 {payment.paymentMethod === "BKASH" && payment.bkashTrxId && (
                                                   <span
-                                                    className="inline-flex items-center gap-1.5 rounded-xl bg-pink-50/90 border border-[#d12053]/30 px-3 py-1 text-[#d12053] shadow-2xs"
+                                                    className="rounded-lg bg-pink-50 border border-[#d12053]/25 px-2 py-1 text-[11px] font-mono font-bold text-[#d12053]"
                                                     title="bKash Transaction ID submitted by passenger"
                                                   >
-                                                    <span className="text-[10px] font-bold uppercase tracking-wider text-[#d12053]/75 font-sans">
-                                                      TrxID:
-                                                    </span>
-                                                    <span className="font-mono text-xs sm:text-sm font-black tracking-wider text-[#d12053] select-all">
-                                                      {payment.bkashTrxId}
-                                                    </span>
+                                                    bKash TrxID: {payment.bkashTrxId}
                                                   </span>
                                                 )}
                                                 {payment.paymentMethod === "MANUAL" && (
-                                                  <span className="rounded-xl bg-slate-100 border border-slate-200 px-2.5 py-1 text-xs font-bold text-slate-700">
+                                                  <span className="rounded-lg bg-slate-100 px-2 py-1 text-[11px] font-bold text-slate-600">
                                                     Manual Cash
                                                   </span>
                                                 )}
                                                 <button
-                                                  type="button"
                                                   onClick={() => handleDriverApprove(payment._id)}
                                                   disabled={busy === payment._id}
-                                                  className="flex items-center gap-1 rounded-xl bg-emerald-600 px-3.5 py-1.5 text-xs font-bold text-white shadow-xs transition hover:bg-emerald-700 disabled:opacity-60 cursor-pointer"
-                                                  title="Approve payment and mark as Paid for both users"
+                                                  className="flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white shadow-xs transition hover:bg-emerald-700 disabled:opacity-60"
+                                                  title="Confirm payment received and mark as Paid for both users"
                                                 >
                                                   {busy === payment._id ? (
-                                                    <Loader2 className="animate-spin" size={12} />
+                                                    <Loader2 className="animate-spin" size={13} />
                                                   ) : (
-                                                    <Check size={12} />
+                                                    <Check size={13} />
                                                   )}
-                                                  Approve
+                                                  Paid
                                                 </button>
                                               </div>
                                             ) : null}
                                           </>
                                         )}
                                         <button
-                                          type="button"
                                           onClick={() => setChatTarget({ rideId: ride._id, otherUser: req.rider })}
-                                          className="flex items-center gap-1.5 rounded-xl bg-blue-600 px-3 py-1.5 text-xs font-bold text-white shadow-xs transition hover:bg-blue-700 cursor-pointer"
+                                          className="flex items-center gap-1 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-xs transition hover:bg-blue-700"
                                         >
-                                          <MessageSquare size={12} />
+                                          <MessageSquare size={13} />
                                           Chat
                                         </button>
                                         <button
-                                          type="button"
                                           onClick={() => reveal(req._id)}
                                           disabled={busy === req._id}
-                                          className="flex items-center gap-1.5 rounded-xl bg-slate-800 px-3 py-1.5 text-xs font-bold text-white shadow-xs transition hover:bg-slate-900 disabled:opacity-60 cursor-pointer"
+                                          className="flex items-center gap-1 rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-slate-900 disabled:opacity-60"
                                         >
-                                          {busy === req._id ? <Loader2 className="animate-spin" size={12} /> : <Eye size={12} />}
+                                          {busy === req._id ? <Loader2 className="animate-spin" size={13} /> : <Eye size={13} />}
                                           Reveal contact
                                         </button>
-                                      </div>
+                                      </>
                                     )}
                                   </div>
                                 </div>
 
                                 {/* DRIVER EXTENDED EXTRA SEAT REQUEST BOX */}
                                 {payment && payment.amountPaid > 0 && payment.remainingAmount > 0 && payment.status !== "REFUND_REQUESTED" && payment.status !== "REFUNDED" && (
-                                  <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-amber-50/90 border border-amber-200/80 p-3">
+                                  <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-amber-50/80 border border-amber-200 p-3">
                                     <div className="flex flex-wrap items-center gap-2">
                                       <Users size={13} className="text-amber-700" />
                                       <span className="text-xs font-bold text-amber-900">
                                         Requested Extra: +{Math.round(payment.remainingAmount / (ride.charge || 1))} Seat(s) ({formatTaka(payment.remainingAmount)})
                                       </span>
                                       {payment.paymentMethod === "BKASH" && payment.bkashTrxId && (
-                                        <span className="inline-flex items-center gap-1.5 rounded-xl bg-pink-100/90 border border-[#d12053]/30 px-3 py-1 text-[#d12053] shadow-2xs">
-                                          <span className="text-[10px] font-bold uppercase tracking-wider text-[#d12053]/75 font-sans">
-                                            Extra TrxID:
-                                          </span>
-                                          <span className="font-mono text-xs sm:text-sm font-black tracking-wider text-[#d12053] select-all">
-                                            {payment.bkashTrxId}
-                                          </span>
+                                        <span className="rounded-md bg-pink-100 text-[#d12053] px-2 py-0.5 text-[10px] font-mono font-bold">
+                                          bKash TrxID: {payment.bkashTrxId}
                                         </span>
                                       )}
                                       {payment.paymentMethod === "MANUAL" && (
@@ -998,10 +763,10 @@ export default function MyRides() {
                                       )}
                                     </div>
                                     <button
-                                      type="button"
                                       onClick={() => handleDriverApprove(payment._id)}
                                       disabled={busy === payment._id}
-                                      className="flex items-center gap-1 rounded-xl bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white shadow-xs transition hover:bg-emerald-700 disabled:opacity-60 cursor-pointer shrink-0"
+                                      className="flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white shadow-xs transition hover:bg-emerald-700 disabled:opacity-60 cursor-pointer shrink-0"
+                                      title="Approve extra seats payment and merge booking"
                                     >
                                       {busy === payment._id ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
                                       Approve Extra ({formatTaka(payment.remainingAmount)})
@@ -1010,7 +775,7 @@ export default function MyRides() {
                                 )}
 
                                 {req.status === "cancelled" && req.cancelReason && (
-                                  <div className="flex items-start gap-2 rounded-xl bg-rose-50 p-2.5 text-xs font-medium text-rose-600 border border-rose-100">
+                                  <div className="mt-3 flex items-start gap-2 rounded-lg bg-rose-50 px-3 py-2 text-xs font-medium text-rose-600 border border-rose-100">
                                     <Info size={13} className="mt-0.5 shrink-0" />
                                     <span>Request cancelled — {req.cancelReason}</span>
                                   </div>
@@ -1029,13 +794,13 @@ export default function MyRides() {
           )}
 
           {/* PASSENGER REQUESTED RIDES */}
-          {(filterTab === "all" || filterTab === "requested") && displayedRequested.length > 0 && (
+          {my.requested.length > 0 && (
             <section>
               <h2 className="mb-3 flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-slate-500">
-                <Users size={15} /> Rides I requested ({displayedRequested.length})
+                <Users size={15} /> Rides I requested
               </h2>
               <div className="space-y-3">
-                {displayedRequested.map((req) => {
+                {my.requested.map((req) => {
                   const meta = STATUS_META[req.status] || STATUS_META.pending;
                   const ride = req.ride;
                   if (!ride) return null;
@@ -1057,291 +822,244 @@ export default function MyRides() {
                     payment?.status === "REFUND_REQUESTED" &&
                     !isDriverRefundAwaitingPassenger;
 
-                  const hasExtraPending =
-                    payment &&
-                    payment.amountPaid > 0 &&
-                    payment.remainingAmount > 0 &&
-                    payment.status !== "REFUND_REQUESTED" &&
-                    payment.status !== "REFUNDED";
-
-                  const baseAmount = payment
-                    ? hasExtraPending
-                      ? payment.amountPaid
-                      : (payment.totalOutstanding || payment.originalAmount)
-                    : (ride.charge || 0) * (req.seats || 1);
-
                   return (
-                    <div key={req._id} className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-xs hover:shadow-md transition-all">
-                      <div className="p-5 space-y-4">
-                        {/* 1. Header: Driver Info & Status */}
-                        <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div key={req._id} className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-card">
+                      <div className="p-5">
+                        <div className="flex flex-wrap items-center justify-between gap-y-3">
                           <div className="flex items-center gap-3">
                             {avatar(ride?.poster)}
                             <div>
-                              <div className="flex items-center gap-2">
-                                <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                                  Driver
-                                </span>
-                                {nameLine(ride?.poster)}
-                              </div>
-                              <p className="mt-0.5 text-xs text-slate-400">
-                                Offered ride on {new Date(ride.createdAt || Date.now()).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                              {nameLine(ride?.poster)}
+                              <p className="mt-1 text-xs text-slate-400 flex items-center gap-2">
+                                <span>{rideLinePills(ride)}</span>
+                                {ride.status === "open" &&
+                                  (req.status === "pending" || req.status === "accepted") &&
+                                  payment?.status !== "REFUND_REQUESTED" &&
+                                  payment?.status !== "REFUNDED" && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const perSeat = Number(ride.charge || 0);
+                                        const paid = Number(
+                                          payment?.amountPaid ||
+                                          (payment?.status === "PAID" || req.paymentStatus === "SETTLED"
+                                            ? payment?.originalAmount || (perSeat * (req.seats || 1))
+                                            : 0)
+                                        );
+                                        const isPaid = paid > 0;
+                                        const initial = isPaid && (ride.seatsLeft || 0) > 0 ? (req.seats || 1) + 1 : (req.seats || 1);
+                                        setSeatEditTarget({ ride, req });
+                                        setSelectedSeats(initial);
+                                      }}
+                                      className="text-[11px] font-bold text-brand-600 hover:underline cursor-pointer bg-brand-50 px-2 py-0.5 rounded-md"
+                                      title="Request more seats or change seat count"
+                                    >
+                                      Change seats
+                                    </button>
+                                  )}
                               </p>
                             </div>
                           </div>
-
-                          <div className="flex items-center gap-2">
-                            {ride.tripStatus === "ongoing" && (
-                              <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 border border-amber-200 px-2.5 py-1 text-xs font-bold text-amber-700">
-                                <Play size={11} className="text-amber-500 animate-pulse" />
-                                In Transit
-                              </span>
-                            )}
-                            <span className={`rounded-full px-3 py-1 text-xs font-bold border ${meta.classes}`}>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className={`rounded-full px-3 py-1 text-xs font-semibold border ${meta.classes}`}>
                               {meta.label}
                             </span>
-                            {ride.status === "completed" && (
-                              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 border border-emerald-200 px-2.5 py-1 text-xs font-bold text-emerald-700">
-                                <Check size={12} /> Completed
+
+                            {/* DRIVER WANTS TO CANCEL NOTICE */}
+                            {isDriverWantsToCancel && payment?.status !== "REFUNDED" && (
+                              <span className="inline-flex items-center gap-1 rounded-lg bg-rose-50 border border-rose-200 px-2.5 py-1 text-xs font-bold text-rose-700">
+                                <AlertCircle size={12} className="text-rose-500" />
+                                Driver wants to cancel ride
                               </span>
+                            )}
+
+                            {/* PASSENGER REFUND ACTIONS */}
+                            {payment?.status === "REFUNDED" && (
+                              <span className="inline-flex items-center gap-1 rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-1.5 text-xs font-extrabold text-emerald-700">
+                                <Check size={13} /> Approved (Refund Completed)
+                              </span>
+                            )}
+
+                            {isDriverRefundAwaitingPassenger && (
+                              <button
+                                onClick={() => handlePassengerConfirmRefund(payment._id)}
+                                disabled={busy === payment._id}
+                                className="flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-extrabold text-white shadow-sm transition hover:bg-emerald-700 animate-pulse disabled:opacity-60 cursor-pointer"
+                                title="Click to confirm you received the refund and cancel ride"
+                              >
+                                {busy === payment._id ? (
+                                  <Loader2 className="animate-spin" size={13} />
+                                ) : (
+                                  <Check size={13} />
+                                )}
+                                Got Refund
+                              </button>
+                            )}
+
+                            {isPassengerRefundPendingDriver && (
+                              <span className="inline-flex items-center gap-1.5 rounded-lg bg-amber-50 border border-amber-200 px-3 py-1.5 text-xs font-bold text-amber-800">
+                                <Clock3 size={13} className="animate-spin text-amber-500" />
+                                Pending
+                              </span>
+                            )}
+
+                            {(req.status === "pending" || req.status === "accepted") &&
+                              payment?.status !== "REFUND_REQUESTED" &&
+                              payment?.status !== "REFUNDED" && (
+                                <button
+                                  onClick={() => openCancelModal(ride._id, req._id, req.status, payment)}
+                                  className="flex items-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-600 shadow-sm transition hover:border-rose-300 hover:bg-rose-100"
+                                >
+                                  <X size={13} />
+                                  {payment &&
+                                  (payment.amountPaid > 0 || payment.status === "PAID" || req.paymentStatus === "SETTLED")
+                                    ? "Cancel and ask for refund"
+                                    : "Cancel ride"}
+                                </button>
+                              )}
+
+                            {req.status === "declined" && (
+                              <button
+                                onClick={async () => {
+                                  setBusy(req._id);
+                                  try {
+                                    await cancelRequest(ride._id, req._id);
+                                    await load();
+                                  } catch {
+                                    /* ignore */
+                                  } finally {
+                                    setBusy("");
+                                  }
+                                }}
+                                disabled={busy === req._id}
+                                className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-600 shadow-sm transition hover:border-slate-300 hover:bg-slate-100 disabled:opacity-60"
+                                title="Dismiss this declined request from your list"
+                              >
+                                {busy === req._id ? <Loader2 className="animate-spin" size={13} /> : <X size={13} />}
+                                Dismiss
+                              </button>
+                            )}
+
+                            {req.status === "accepted" && (
+                              <>
+                                {ride.charge > 0 && payment && (
+                                  <>
+                                    {payment.status === "PAID" || (req.paymentStatus === "SETTLED" && (!payment.remainingAmount || payment.remainingAmount === 0)) ? (
+                                      <span className="inline-flex items-center gap-1 rounded-lg bg-emerald-50 border border-emerald-200/80 px-2.5 py-1 text-xs font-extrabold text-emerald-700">
+                                        <Check size={13} /> Paid
+                                      </span>
+                                    ) : payment.amountPaid > 0 && payment.remainingAmount > 0 && payment.status !== "REFUND_REQUESTED" && payment.status !== "REFUNDED" ? (
+                                      <div className="flex flex-wrap items-center gap-1.5">
+                                        <span className="inline-flex items-center gap-1 rounded-lg bg-emerald-50 border border-emerald-200/80 px-2 py-0.5 text-[11px] font-extrabold text-emerald-700">
+                                          <Check size={11} /> Paid ({formatTaka(payment.amountPaid)})
+                                        </span>
+                                        {payment.paymentMethod === "BKASH" && payment.bkashTrxId && (
+                                          <span className="rounded-lg bg-pink-50 border border-[#d12053]/25 px-2 py-0.5 text-[11px] font-mono font-bold text-[#d12053]">
+                                            TrxID: {payment.bkashTrxId}
+                                          </span>
+                                        )}
+                                        {payment.paymentMethod ? (
+                                          <button
+                                            onClick={() => handleOpenPaymentOptions(req, ride, payment)}
+                                            className="text-xs font-bold text-brand-600 hover:underline px-1 cursor-pointer"
+                                          >
+                                            Change
+                                          </button>
+                                        ) : (
+                                          <button
+                                            onClick={() => handleOpenPaymentOptions(req, ride, payment)}
+                                            className="flex items-center gap-1 rounded-lg bg-[#d12053] px-2.5 py-1 text-xs font-bold text-white shadow-xs transition hover:bg-[#b01742] animate-pulse cursor-pointer"
+                                          >
+                                            <Wallet size={12} />
+                                            Pay Extra ({formatTaka(payment.remainingAmount)})
+                                          </button>
+                                        )}
+                                      </div>
+                                    ) : payment.paymentMethod ? (
+                                      <div className="flex flex-wrap items-center gap-1.5">
+                                        <span className="inline-flex items-center gap-1 rounded-lg bg-amber-50 border border-amber-200 px-2.5 py-1 text-xs font-bold text-amber-700">
+                                          <Clock3 size={11} className="animate-spin text-amber-600" />
+                                          Pending
+                                        </span>
+                                        {payment.paymentMethod === "BKASH" && payment.bkashTrxId && (
+                                          <span className="rounded-lg bg-pink-50 border border-[#d12053]/25 px-2 py-0.5 text-[11px] font-mono font-bold text-[#d12053]">
+                                            TrxID: {payment.bkashTrxId}
+                                          </span>
+                                        )}
+                                        {payment.paymentMethod === "MANUAL" && (
+                                          <span className="rounded-lg bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-600">
+                                            Manual Cash
+                                          </span>
+                                        )}
+                                        <button
+                                          onClick={() => handleOpenPaymentOptions(req, ride, payment)}
+                                          className="text-xs font-bold text-brand-600 hover:underline px-1 cursor-pointer"
+                                        >
+                                          Change
+                                        </button>
+                                      </div>
+                                    ) : (
+                                      <button
+                                        onClick={() => handleOpenPaymentOptions(req, ride, payment)}
+                                        className="flex items-center gap-1.5 rounded-lg bg-[#d12053] px-3 py-1.5 text-xs font-bold text-white shadow-xs transition hover:bg-[#b01742] animate-pulse cursor-pointer"
+                                      >
+                                        <Wallet size={13} />
+                                        Pay Fee ({formatTaka((ride.charge || 0) * (req.seats || 1))})
+                                      </button>
+                                    )}
+                                  </>
+                                )}
+                                <button
+                                  onClick={() => setChatTarget({ rideId: ride._id, otherUser: ride.poster })}
+                                  className="flex items-center gap-1 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-xs transition hover:bg-blue-700"
+                                >
+                                  <MessageSquare size={13} />
+                                  Message driver
+                                </button>
+                                <button
+                                  onClick={() => reveal(req._id)}
+                                  disabled={busy === req._id}
+                                  className="flex items-center gap-1 rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-slate-900 disabled:opacity-60"
+                                >
+                                  {busy === req._id ? <Loader2 className="animate-spin" size={13} /> : <Eye size={13} />}
+                                  Reveal driver contact
+                                </button>
+                                {reportedTripIds.has(String(ride._id)) ? (
+                                  <span
+                                    className="flex items-center gap-1 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs font-semibold text-amber-700 shadow-2xs"
+                                    title="Safety concern reported for this trip"
+                                  >
+                                    <Clock3 size={12} className="text-amber-600" />
+                                    Safety Reported
+                                  </span>
+                                ) : (
+                                  <button
+                                    onClick={() => {
+                                      setSafetyReportRide(ride);
+                                      setSafetyReportIsDriver(false);
+                                    }}
+                                    className="flex items-center gap-1 rounded-lg border border-rose-200 bg-rose-50/70 px-2.5 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-100 transition shadow-2xs cursor-pointer"
+                                    title="Report a safety concern for this ride"
+                                  >
+                                    <ShieldAlert size={13} className="text-rose-600" />
+                                    Report Safety
+                                  </button>
+                                )}
+                              </>
                             )}
                           </div>
                         </div>
 
-                        {/* 2. Journey & Route Card */}
-                        <div className="rounded-2xl border border-slate-200/70 bg-slate-50/60 p-4 space-y-3.5">
-                          {/* Route line */}
-                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-                            <div className="flex items-center gap-2 flex-wrap min-w-0">
-                              <span className="inline-flex items-center gap-1.5 rounded-xl bg-white border border-slate-200/80 px-3 py-1.5 text-xs font-bold text-slate-800 shadow-2xs">
-                                <span className="h-2 w-2 rounded-full bg-emerald-500 shrink-0"></span>
-                                <span className="truncate max-w-[200px] sm:max-w-xs">{shortLabel(ride.pickup)}</span>
-                              </span>
-                              <Navigation size={13} className="text-slate-400 shrink-0 mx-0.5" />
-                              <span className="inline-flex items-center gap-1.5 rounded-xl bg-white border border-slate-200/80 px-3 py-1.5 text-xs font-bold text-slate-800 shadow-2xs">
-                                <span className="h-2 w-2 rounded-full bg-rose-500 shrink-0"></span>
-                                <span className="truncate max-w-[200px] sm:max-w-xs">{shortLabel(ride.dropoff)}</span>
-                              </span>
-                            </div>
-
-                            <div className="flex items-center gap-3 shrink-0 text-xs font-semibold text-slate-600">
-                              <span className="flex items-center gap-1 text-slate-700 bg-white border border-slate-200/80 px-2.5 py-1 rounded-lg">
-                                <Clock3 size={13} className="text-blue-600" />
-                                {formatTime12Hour(ride.departureTime)}
-                              </span>
-                            </div>
-                          </div>
-
-                          {/* Journey metadata strip (Seats, Fare, Payment Status) */}
-                          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200/60 pt-3 text-xs">
-                            <div className="flex items-center gap-3">
-                              <span className="flex items-center gap-1.5 font-bold text-slate-700">
-                                <Users size={13} className="text-slate-400" />
-                                <span>{req.seats || 1} Seat{req.seats > 1 ? "s" : ""}</span>
-                              </span>
-
-                              {ride.status === "open" &&
-                                ride.tripStatus !== "ongoing" &&
-                                (req.status === "pending" || req.status === "accepted") &&
-                                payment?.status !== "REFUND_REQUESTED" &&
-                                payment?.status !== "REFUNDED" && (
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      const perSeat = Number(ride.charge || 0);
-                                      const paid = Number(
-                                        payment?.amountPaid ||
-                                        (payment?.status === "PAID" || req.paymentStatus === "SETTLED"
-                                          ? payment?.originalAmount || (perSeat * (req.seats || 1))
-                                          : 0)
-                                      );
-                                      const isPaid = paid > 0;
-                                      const initial = isPaid && (ride.seatsLeft || 0) > 0 ? (req.seats || 1) + 1 : (req.seats || 1);
-                                      setSeatEditTarget({ ride, req });
-                                      setSelectedSeats(initial);
-                                    }}
-                                    className="text-[11px] font-bold text-blue-600 hover:text-blue-700 bg-blue-50/80 hover:bg-blue-100/80 px-2.5 py-0.5 rounded-lg border border-blue-200/60 transition cursor-pointer"
-                                  >
-                                    Change seats
-                                  </button>
-                                )}
-                            </div>
-
-                            {/* Fare & Status */}
-                            <div className="flex flex-wrap items-center gap-2">
-                              <span className="font-bold text-slate-700 flex items-center gap-1">
-                                <Wallet size={13} className="text-brand-500" />
-                                <span>Fare: {formatTaka(baseAmount)}</span>
-                              </span>
-
-                              {payment && (
-                                <>
-                                  {payment.status === "PAID" || (req.paymentStatus === "SETTLED" && !hasExtraPending) ? (
-                                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100/80 border border-emerald-200/80 px-2.5 py-0.5 text-[10px] font-extrabold text-emerald-800">
-                                      <Check size={11} /> Paid
-                                    </span>
-                                  ) : hasExtraPending ? (
-                                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100/80 border border-emerald-200/80 px-2.5 py-0.5 text-[10px] font-extrabold text-emerald-800">
-                                      <Check size={11} /> Paid ({Math.round(payment.amountPaid / (ride.charge || 1))} seats)
-                                    </span>
-                                  ) : payment.status === "REFUND_REQUESTED" ? (
-                                    <span className="rounded-full bg-violet-100 border border-violet-200 px-2.5 py-0.5 text-[10px] font-bold text-violet-800">
-                                      Refund in Progress
-                                    </span>
-                                  ) : payment.status === "REFUNDED" ? (
-                                    <span className="rounded-full bg-slate-200 px-2.5 py-0.5 text-[10px] font-bold text-slate-700">
-                                      Refunded
-                                    </span>
-                                  ) : payment.paymentMethod ? (
-                                    <div className="flex items-center gap-1.5">
-                                      <span className="rounded-full bg-amber-100 border border-amber-200 px-2.5 py-0.5 text-[10px] font-bold text-amber-800 flex items-center gap-1">
-                                        <Clock3 size={10} className="animate-spin text-amber-600" /> Wait for approval ({payment.paymentMethod === "BKASH" ? "bKash" : "Manual Cash"})
-                                      </span>
-                                      {payment.paymentMethod === "BKASH" && payment.bkashTrxId && (
-                                        <span
-                                          className="inline-flex items-center gap-1.5 rounded-xl bg-pink-50/90 border border-[#d12053]/30 px-3 py-1 text-[#d12053] shadow-2xs"
-                                          title="bKash Transaction ID submitted by you"
-                                        >
-                                          <span className="text-[10px] font-bold uppercase tracking-wider text-[#d12053]/75 font-sans">
-                                            TrxID:
-                                          </span>
-                                          <span className="font-mono text-xs sm:text-sm font-black tracking-wider text-[#d12053] select-all">
-                                            {payment.bkashTrxId}
-                                          </span>
-                                        </span>
-                                      )}
-                                      <button
-                                        onClick={() => handleOpenPaymentOptions(req, ride, payment)}
-                                        className="text-[11px] font-bold text-brand-600 hover:underline px-1 cursor-pointer"
-                                      >
-                                        Change
-                                      </button>
-                                    </div>
-                                  ) : req.status === "accepted" ? (
-                                    <button
-                                      onClick={() => handleOpenPaymentOptions(req, ride, payment)}
-                                      className="flex items-center gap-1 rounded-lg bg-[#d12053] px-3 py-1 text-xs font-bold text-white shadow-xs transition hover:bg-[#b01742] animate-pulse cursor-pointer"
-                                    >
-                                      <Wallet size={12} />
-                                      Pay Fare ({formatTaka((ride.charge || 0) * (req.seats || 1))})
-                                    </button>
-                                  ) : (
-                                    <span className="rounded-full bg-slate-200/80 px-2.5 py-0.5 text-[10px] font-semibold text-slate-600">
-                                      Unpaid
-                                    </span>
-                                  )}
-                                </>
-                              )}
-
-                              {payment && (
-                                <Link
-                                  to={`/ride-payments/${payment._id}`}
-                                  className="text-xs font-semibold text-slate-400 hover:text-slate-700 hover:underline ml-1"
-                                >
-                                  Details
-                                </Link>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* 3. Extra Seats Due Banner (if applicable) */}
-                        {hasExtraPending && (
-                          <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-amber-50/90 border border-amber-200/80 px-3.5 py-2.5">
-                            <div className="flex flex-wrap items-center gap-2 text-xs">
-                              <Users size={14} className="text-amber-700" />
-                              <span className="font-bold text-amber-900">
-                                Extra Seats: +{Math.round(payment.remainingAmount / (ride.charge || 1))} ({formatTaka(payment.remainingAmount)})
-                              </span>
-                              {payment.paymentMethod ? (
-                                <span className="rounded-full bg-amber-100 text-amber-800 border border-amber-300 px-2.5 py-0.5 text-[10px] font-bold flex items-center gap-1">
-                                  <Clock3 size={10} className="animate-spin text-amber-600" /> Wait for approval ({payment.paymentMethod === "BKASH" ? "bKash" : "Manual Cash"})
-                                </span>
-                              ) : (
-                                <span className="rounded-full bg-rose-100 text-rose-700 border border-rose-200 px-2 py-0.5 text-[10px] font-bold">
-                                  Payment Pending
-                                </span>
-                              )}
-                              {payment.paymentMethod === "BKASH" && payment.bkashTrxId && (
-                                <span
-                                  className="inline-flex items-center gap-1.5 rounded-xl bg-pink-100/90 border border-[#d12053]/30 px-3 py-1 text-[#d12053] shadow-2xs"
-                                  title="bKash Transaction ID submitted for extra seats"
-                                >
-                                  <span className="text-[10px] font-bold uppercase tracking-wider text-[#d12053]/75 font-sans">
-                                    Extra TrxID:
-                                  </span>
-                                  <span className="font-mono text-xs sm:text-sm font-black tracking-wider text-[#d12053] select-all">
-                                    {payment.bkashTrxId}
-                                  </span>
-                                </span>
-                              )}
-                            </div>
-                            <div>
-                              {payment.paymentMethod ? (
-                                <button
-                                  onClick={() => handleOpenPaymentOptions(req, ride, payment)}
-                                  className="text-xs font-bold text-brand-600 hover:underline cursor-pointer"
-                                >
-                                  Change Method
-                                </button>
-                              ) : (
-                                <button
-                                  onClick={() => handleOpenPaymentOptions(req, ride, payment)}
-                                  className="flex items-center gap-1 rounded-lg bg-[#d12053] px-3 py-1.5 text-xs font-bold text-white shadow-xs transition hover:bg-[#b01742] animate-pulse cursor-pointer"
-                                >
-                                  <Wallet size={12} />
-                                  Pay Extra ({formatTaka(payment.remainingAmount)})
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                        )}
-
-                        {/* 4. Special Alert Banners (Cancellation / Refund confirmation) */}
-                        {isDriverWantsToCancel && payment?.status !== "REFUNDED" && (
-                          <div className="flex items-center gap-2 rounded-xl bg-rose-50 border border-rose-200 px-3.5 py-2.5 text-xs font-bold text-rose-700">
-                            <AlertCircle size={14} className="text-rose-500 shrink-0" />
-                            <span>Driver requested to cancel this ride and initiate a refund.</span>
-                          </div>
-                        )}
-
-                        {isDriverRefundAwaitingPassenger && (
-                          <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-emerald-50 border border-emerald-200 p-3">
-                            <div className="text-xs text-emerald-800">
-                              <p className="font-bold flex items-center gap-1.5">
-                                <Check size={14} className="text-emerald-600" />
-                                Driver has sent your refund!
-                              </p>
-                              <p className="text-[11px] text-emerald-700 mt-0.5">
-                                Please confirm below once you have received the refund in your account.
-                              </p>
-                            </div>
-                            <button
-                              onClick={() => handlePassengerConfirmRefund(payment._id)}
-                              disabled={busy === payment._id}
-                              className="flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-extrabold text-white shadow-sm transition hover:bg-emerald-700 animate-pulse disabled:opacity-60 cursor-pointer"
-                            >
-                              {busy === payment._id ? <Loader2 className="animate-spin" size={13} /> : <Check size={13} />}
-                              Confirm Refunded
-                            </button>
-                          </div>
-                        )}
-
-                        {isPassengerRefundPendingDriver && (
-                          <div className="flex items-center gap-2 rounded-xl bg-amber-50 border border-amber-200 px-3.5 py-2.5 text-xs font-bold text-amber-800">
-                            <Clock3 size={14} className="animate-spin text-amber-500 shrink-0" />
-                            <span>Waiting for driver to process your refund.</span>
-                          </div>
-                        )}
-
-                        {/* Cancellation reason info if cancelled */}
+                        {/* DRIVER CANCELLATION REASON NOTICE */}
                         {(ride.status === "cancelled" || req.status === "cancelled") && (ride.cancelReason || req.cancelReason) && (
-                          <div className="rounded-xl border border-rose-100 bg-rose-50/80 p-3 text-xs text-rose-700 space-y-1">
+                          <div className="mt-3 rounded-xl border border-rose-100 bg-rose-50/80 p-3 text-xs text-rose-700 space-y-1">
                             <p className="font-bold flex items-center gap-1.5 text-rose-800">
                               <Info size={14} className="shrink-0" />
                               Cancellation Reason:
                             </p>
-                            <p className="pl-5 italic">"{ride.cancelReason || req.cancelReason}"</p>
+                            <p className="pl-5 italic">
+                              "{ride.cancelReason || req.cancelReason}"
+                            </p>
                             {payment?.refundMethod && (
                               <p className="pl-5 text-[11px] font-semibold text-slate-700 pt-1">
                                 Refund via: <strong>{payment.refundMethod === "BKASH" ? "bKash" : "Manual Cash"}</strong>
@@ -1355,126 +1073,131 @@ export default function MyRides() {
                           </div>
                         )}
 
-                        {/* 5. Footer Action Toolbar */}
-                        <div className="flex flex-wrap items-center justify-between gap-2.5 pt-2 border-t border-slate-100">
-                          {/* Left Utilities */}
-                          <div className="flex flex-wrap items-center gap-2">
-                            <a
-                              href={mapsUrl(ride)}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 hover:border-slate-300 shadow-2xs"
-                            >
-                              <Map size={13} className="text-slate-500" />
-                              View in map
-                            </a>
-                            <button
-                              type="button"
-                              onClick={() => toggleExpanded(req._id)}
-                              className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 hover:border-slate-300 shadow-2xs cursor-pointer"
-                            >
-                              <FileText size={13} className="text-slate-500" />
-                              {expandedIds[req._id] ? "Hide details" : "Show details"}
-                              {expandedIds[req._id] ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-                            </button>
+                        <MapDetailBar
+                          ride={ride}
+                          expanded={!!expandedIds[req._id]}
+                          onToggle={() => toggleExpanded(req._id)}
+                        />
 
-                            {(req.status === "pending" || req.status === "accepted") &&
-                              ride.status !== "completed" &&
-                              payment?.status !== "REFUND_REQUESTED" &&
-                              payment?.status !== "REFUNDED" && (
-                                <button
-                                  type="button"
-                                  onClick={() => openCancelModal(ride._id, req._id, req.status, payment)}
-                                  className="text-xs font-semibold text-slate-400 hover:text-rose-600 transition px-2 py-1 cursor-pointer"
-                                >
-                                  {payment &&
-                                  (payment.amountPaid > 0 || payment.status === "PAID" || req.paymentStatus === "SETTLED")
-                                    ? "Cancel & ask for refund"
-                                    : req.status === "pending"
-                                    ? "Withdraw request"
-                                    : "Cancel booking"}
-                                </button>
+                        {payment && (() => {
+                          const hasExtraPending =
+                            payment.amountPaid > 0 &&
+                            payment.remainingAmount > 0 &&
+                            payment.status !== "REFUND_REQUESTED" &&
+                            payment.status !== "REFUNDED";
+                          const baseAmount = hasExtraPending ? payment.amountPaid : (payment.totalOutstanding || payment.originalAmount);
+
+                          return (
+                            <div className="mt-3 space-y-2">
+                              {/* Main Fare Bar */}
+                              <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-slate-50 px-3.5 py-2.5 border border-slate-100">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <Wallet size={14} className="text-brand-500" />
+                                  <span className="text-xs font-bold text-slate-800">
+                                    Fare: {formatTaka(baseAmount)}
+                                  </span>
+                                  {payment.status === "PAID" || (req.paymentStatus === "SETTLED" && !hasExtraPending) ? (
+                                    <span className="rounded-full bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 text-[10px] font-extrabold text-emerald-700">
+                                      Paid
+                                    </span>
+                                  ) : hasExtraPending ? (
+                                    <span className="rounded-full bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 text-[10px] font-extrabold text-emerald-700">
+                                      Paid ({Math.round(payment.amountPaid / (ride.charge || 1))} seats)
+                                    </span>
+                                  ) : payment.status === "REFUND_REQUESTED" ? (
+                                    <span className="rounded-full bg-violet-50 border border-violet-200 px-2.5 py-0.5 text-[10px] font-bold text-violet-700">
+                                      Refund in Progress
+                                    </span>
+                                  ) : payment.status === "REFUNDED" ? (
+                                    <span className="rounded-full bg-slate-200 px-2.5 py-0.5 text-[10px] font-bold text-slate-700">
+                                      Refunded
+                                    </span>
+                                  ) : payment.paymentMethod ? (
+                                    <span className="rounded-full bg-amber-50 border border-amber-200 px-2.5 py-0.5 text-[10px] font-bold text-amber-700 flex items-center gap-1">
+                                      <Clock3 size={10} className="animate-spin text-amber-500" /> Wait for approval (
+                                      {payment.paymentMethod === "BKASH" ? "bKash" : "Manual Cash"})
+                                    </span>
+                                  ) : (
+                                    <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
+                                      Unpaid
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-3">
+                                  {!hasExtraPending &&
+                                    payment.status !== "PAID" &&
+                                    req.paymentStatus !== "SETTLED" &&
+                                    payment.status !== "REFUND_REQUESTED" &&
+                                    payment.status !== "REFUNDED" && (
+                                      <button
+                                        onClick={() => handleOpenPaymentOptions(req, ride, payment)}
+                                        className="text-xs font-bold text-[#d12053] hover:underline"
+                                      >
+                                        {payment.paymentMethod ? "Switch / Repay" : "Pay via bKash / Manual"}
+                                      </button>
+                                    )}
+                                  <Link
+                                    to={`/ride-payments/${payment._id}`}
+                                    className="text-xs font-semibold text-slate-500 hover:text-slate-800 hover:underline"
+                                  >
+                                    Details
+                                  </Link>
+                                </div>
+                              </div>
+
+                              {/* Separate Extra Seat Request Row Below Fare */}
+                              {hasExtraPending && (
+                                <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-amber-50/80 border border-amber-200 px-3.5 py-2.5">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <Users size={14} className="text-amber-700" />
+                                    <span className="text-xs font-bold text-amber-900">
+                                      Extra Seats: +{Math.round(payment.remainingAmount / (ride.charge || 1))} ({formatTaka(payment.remainingAmount)})
+                                    </span>
+                                    {payment.paymentMethod ? (
+                                      <span className="rounded-full bg-amber-100 text-amber-800 border border-amber-300 px-2.5 py-0.5 text-[10px] font-bold flex items-center gap-1">
+                                        <Clock3 size={10} className="animate-spin text-amber-600" /> Wait for approval ({payment.paymentMethod === "BKASH" ? "bKash" : "Manual Cash"})
+                                      </span>
+                                    ) : (
+                                      <span className="rounded-full bg-rose-100 text-rose-700 border border-rose-200 px-2 py-0.5 text-[10px] font-bold">
+                                        Payment Pending
+                                      </span>
+                                    )}
+                                    {payment.paymentMethod === "BKASH" && payment.bkashTrxId && (
+                                      <span className="rounded-md bg-pink-100 text-[#d12053] px-2 py-0.5 text-[10px] font-mono font-bold">
+                                        TrxID: {payment.bkashTrxId}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    {payment.paymentMethod ? (
+                                      <button
+                                        onClick={() => handleOpenPaymentOptions(req, ride, payment)}
+                                        className="text-xs font-bold text-brand-600 hover:underline cursor-pointer"
+                                      >
+                                        Change Method
+                                      </button>
+                                    ) : (
+                                      <button
+                                        onClick={() => handleOpenPaymentOptions(req, ride, payment)}
+                                        className="flex items-center gap-1 rounded-lg bg-[#d12053] px-3 py-1.5 text-xs font-bold text-white shadow-xs transition hover:bg-[#b01742] animate-pulse cursor-pointer"
+                                      >
+                                        <Wallet size={12} />
+                                        Pay Extra ({formatTaka(payment.remainingAmount)})
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
                               )}
-
-                            {(ride.status === "completed" ||
-                              req.status === "declined" ||
-                              (req.status === "cancelled" &&
-                                payment?.status !== "REFUND_REQUESTED" &&
-                                (payment?.status === "REFUNDED" || payment?.status === "CANCELLED" || !payment))) && (
-                              <button
-                                type="button"
-                                onClick={() => dismissRide(req._id)}
-                                className="flex items-center gap-1 rounded-xl border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs font-semibold text-slate-500 hover:bg-slate-100 transition cursor-pointer"
-                                title="Remove from active dashboard"
-                              >
-                                <X size={12} />
-                                Dismiss
-                              </button>
-                            )}
-                          </div>
-
-                          {/* Right Primary Contact & Chat Actions */}
-                          {req.status === "accepted" && (
-                            <div className="flex flex-wrap items-center gap-2">
-                              <button
-                                type="button"
-                                onClick={() => setChatTarget({ rideId: ride._id, otherUser: ride.poster })}
-                                className="flex items-center gap-1.5 rounded-xl bg-blue-600 px-3.5 py-1.5 text-xs font-bold text-white shadow-xs transition hover:bg-blue-700 cursor-pointer"
-                              >
-                                <MessageSquare size={13} />
-                                Message driver
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => reveal(req._id)}
-                                disabled={busy === req._id}
-                                className="flex items-center gap-1.5 rounded-xl bg-slate-800 px-3.5 py-1.5 text-xs font-bold text-white shadow-xs transition hover:bg-slate-900 disabled:opacity-60 cursor-pointer"
-                              >
-                                {busy === req._id ? <Loader2 className="animate-spin" size={13} /> : <Eye size={13} />}
-                                Reveal driver contact
-                              </button>
                             </div>
-                          )}
-                        </div>
+                          );
+                        })()}
                       </div>
-
                       {expandedIds[req._id] && <RideDetailPanel ride={ride} />}
                     </div>
                   );
                 })}
               </div>
             </section>
-          )}
-
-          {/* TAB EMPTY STATES */}
-          {filterTab === "posted" && displayedPosted.length === 0 && !searchQuery.trim() && (
-            <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-white px-6 py-10 text-center shadow-card">
-              <CarFront size={24} className="text-slate-300" />
-              <p className="mt-2 text-sm font-semibold text-slate-700">No posted rides</p>
-              <p className="mt-1 text-xs text-slate-400">You haven't posted any rides as a driver yet.</p>
-              <button
-                onClick={() => navigate("/new-ride")}
-                className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-brand-600 px-3.5 py-2 text-xs font-bold text-white shadow-xs hover:bg-brand-700 transition cursor-pointer"
-              >
-                <CarFront size={13} />
-                Post a Ride
-              </button>
-            </div>
-          )}
-
-          {filterTab === "requested" && displayedRequested.length === 0 && !searchQuery.trim() && (
-            <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-white px-6 py-10 text-center shadow-card">
-              <Users size={24} className="text-slate-300" />
-              <p className="mt-2 text-sm font-semibold text-slate-700">No requested rides</p>
-              <p className="mt-1 text-xs text-slate-400">You don't have any active seat requests as a passenger.</p>
-              <button
-                onClick={() => navigate("/find-ride")}
-                className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-brand-600 px-3.5 py-2 text-xs font-bold text-white shadow-xs hover:bg-brand-700 transition cursor-pointer"
-              >
-                <Search size={13} />
-                Find a Ride
-              </button>
-            </div>
           )}
         </>
       )}
@@ -1517,18 +1240,19 @@ export default function MyRides() {
 
               {cancelTarget.status === "accepted" ? (
                 <>
-                  <p className="text-xs text-slate-500">
-                    Let the driver know why you are cancelling. This reason will be shown to them.
-                  </p>
                   <label className="mb-1 block text-xs font-semibold text-slate-600">
-                    Reason <span className="text-rose-500">*</span>
+                    Reason {cancelTarget.payment && (cancelTarget.payment.amountPaid > 0 || cancelTarget.payment.status === "PAID") ? (
+                      <span className="text-slate-400 font-normal">(Optional)</span>
+                    ) : (
+                      <span className="text-rose-500">*</span>
+                    )}
                   </label>
                   <textarea
                     value={cancelReason}
                     onChange={(e) => setCancelReason(e.target.value)}
-                    rows={3}
-                    placeholder="e.g. Plans changed, found another ride"
-                    className="w-full rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm text-slate-800 outline-none transition focus:border-rose-300 focus:ring-2 focus:ring-rose-100"
+                    rows={2}
+                    placeholder="Optional reason for driver..."
+                    className="w-full rounded-lg border border-slate-200 px-3.5 py-2 text-sm text-slate-800 outline-none transition focus:border-rose-300 focus:ring-2 focus:ring-rose-100"
                   />
                   <p className="text-[11px] text-slate-400">
                     Note: Free cancellation within 15 minutes of acceptance. After 15 minutes, a 30 Tk fine per 10 minutes applies.
@@ -1552,7 +1276,10 @@ export default function MyRides() {
                 onClick={cancelRequestOn}
                 disabled={
                   busy === cancelTarget.requestId ||
-                  (cancelTarget.status === "accepted" && !cancelReason.trim())
+                  (cancelTarget.status === "accepted" &&
+                    !cancelTarget.payment?.amountPaid &&
+                    cancelTarget.payment?.status !== "PAID" &&
+                    !cancelReason.trim())
                 }
                 className="flex items-center gap-1.5 rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
               >
@@ -1831,15 +1558,20 @@ export default function MyRides() {
         />
       )}
 
-      {bkashPaymentTarget && (
-        <BkashPaymentManagement
-          isOpen={!!bkashPaymentTarget}
-          onClose={() => setBkashPaymentTarget(null)}
-          payment={bkashPaymentTarget.payment}
-          driver={bkashPaymentTarget.ride?.poster}
-          ride={bkashPaymentTarget.ride}
-          onConfirm={handleConfirmBkashPayment}
-          busy={paymentBusy}
+
+
+      {safetyReportRide && (
+        <ReportSafetyModal
+          isOpen={!!safetyReportRide}
+          ride={safetyReportRide}
+          isDriver={safetyReportIsDriver}
+          onClose={() => setSafetyReportRide(null)}
+          onSuccess={(tripId) => {
+            setSafetyReportRide(null);
+            if (tripId) {
+              setReportedTripIds((prev) => new Set([...prev, String(tripId)]));
+            }
+          }}
         />
       )}
     </div>
