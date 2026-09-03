@@ -65,7 +65,7 @@ export const uploadStudentIdCard = (file) => {
 
 export const deleteAccount = () => client.delete("/students/profile");
 
-const adminClient = axios.create({ baseURL: API_BASE });
+export const adminClient = axios.create({ baseURL: API_BASE });
 
 adminClient.interceptors.request.use((config) => {
   const token = localStorage.getItem("adminToken");

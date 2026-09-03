@@ -1,18 +1,20 @@
 const mongoose = require("mongoose");
 const Student = require("../models/Student");
-const PaymentRequest = require("../models/PaymentRequest");
-const Payment = require("../models/Payment");
+const { PaymentRequest, Payment, generateRequestCode } = require("../models/PaymentRequest");
 const asyncHandler = require("../utils/asyncHandler");
 const { findMe, formatPublicStudent } = require("../utils/studentHelper");
 const { executePayment } = require("../utils/bkash");
-const { generateRequestCode } = require("../models/PaymentRequest");
 
+// Fields to populate for public student profiles
 const publicPayerSelect = "name department year profilePhoto homeArea";
 
-const roundMoney = (value) => Math.round(value * 100) / 100;
+// Safe floating-point rounding for currency amounts
+const roundMoney = (value) => Math.round((Number(value) + Number.EPSILON) * 100) / 100;
 
+// Valid payment statuses that count towards total paid
 const COUNTED_STATUSES = ["COMPLETED", "VERIFIED"];
 
+// Helper: Calculate amount due, amount paid, remaining balance, and status
 const computeSummary = (request, payments) => {
   const amountDue = roundMoney(request.amountDue);
   const amountPaid = roundMoney(
@@ -26,13 +28,7 @@ const computeSummary = (request, payments) => {
   return { amountDue, amountPaid, remaining, status };
 };
 
-const claimedTotal = (payments) =>
-  roundMoney(
-    payments
-      .filter((p) => p.status !== "REJECTED")
-      .reduce((sum, p) => sum + p.amount, 0)
-  );
-
+// Helper: Auto-update request status in the database if it changed
 const refreshRequestStatus = async (request, payments) => {
   const summary = computeSummary(request, payments);
   if (request.status !== summary.status) {
@@ -42,8 +38,15 @@ const refreshRequestStatus = async (request, payments) => {
   return summary;
 };
 
-const loadPayments = async (requestId) => Payment.find({ paymentRequest: requestId }).sort({ paidAt: 1, createdAt: 1 });
+// Helper: Load all payment entries for a request in chronological order
+const loadPayments = async (requestId) =>
+  Payment.find({ paymentRequest: requestId }).sort({ paidAt: 1, createdAt: 1 });
 
+// =============================================================================
+// CONTROLLER HANDLERS
+// =============================================================================
+
+// 1. Search students to send a peer payment request to
 const searchStudents = asyncHandler(async (req, res) => {
   const me = await findMe(req);
   if (!me) return res.status(404).json({ success: false, message: "Profile not found" });
@@ -72,12 +75,14 @@ const searchStudents = asyncHandler(async (req, res) => {
   });
 });
 
+// 2. Create a new peer payment request
 const createPaymentRequest = asyncHandler(async (req, res) => {
   const me = await findMe(req);
   if (!me) return res.status(404).json({ success: false, message: "Profile not found" });
 
   const { payer, amountDue, description, dueDate } = req.body || {};
 
+  // Input validation
   if (!payer || !mongoose.isValidObjectId(payer)) {
     return res.status(400).json({ success: false, message: "A valid payer is required" });
   }
@@ -106,6 +111,7 @@ const createPaymentRequest = asyncHandler(async (req, res) => {
     }
   }
 
+  // Generate unique request code
   let requestCode;
   for (let attempt = 0; attempt < 3; attempt += 1) {
     requestCode = generateRequestCode();
@@ -132,6 +138,7 @@ const createPaymentRequest = asyncHandler(async (req, res) => {
   res.status(201).json({ success: true, data });
 });
 
+// 3. List all payment requests for the logged-in user
 const getMyPaymentRequests = asyncHandler(async (req, res) => {
   const me = await findMe(req);
   if (!me) return res.status(404).json({ success: false, message: "Profile not found" });
@@ -172,6 +179,7 @@ const getMyPaymentRequests = asyncHandler(async (req, res) => {
   res.json({ success: true, data });
 });
 
+// 4. Get detailed view of a single payment request
 const getPaymentRequest = asyncHandler(async (req, res) => {
   if (!mongoose.isValidObjectId(req.params.id)) {
     return res.status(400).json({ success: false, message: "Invalid payment request id" });
@@ -223,6 +231,7 @@ const getPaymentRequest = asyncHandler(async (req, res) => {
   });
 });
 
+// 5. Record a payment against a peer request (via bKash or Manual Cash)
 const recordPayment = asyncHandler(async (req, res) => {
   if (!mongoose.isValidObjectId(req.params.id)) {
     return res.status(400).json({ success: false, message: "Invalid payment request id" });
@@ -258,33 +267,15 @@ const recordPayment = asyncHandler(async (req, res) => {
     return res.status(400).json({ success: false, message: "This payment request is already fully paid" });
   }
 
-  const claimed = claimedTotal(payments);
-  if (roundMoney(claimed + amount) > roundMoney(request.amountDue)) {
-    return res.status(400).json({
-      success: false,
-      message: `Payment would exceed the amount due (remaining ${roundMoney(request.amountDue - claimed)})`,
-    });
-  }
-
   let payment;
   if (method === "BKASH") {
-    let bkashResult;
-    try {
-      bkashResult = await executePayment({ amount, payerId: me._id });
-    } catch (err) {
-      console.error("bKash payment execution failed:", err);
-      return res.status(502).json({
-        success: false,
-        message: "bKash payment could not be processed at this time. Please try again later.",
-      });
-    }
     payment = await Payment.create({
       paymentRequest: request._id,
       paidBy: me._id,
       paidTo: request.requester,
       amount,
       method: "BKASH",
-      reference: bkashResult.trxID || bkashResult.transactionId || null,
+      reference: trimmedReference || `BKASH-${Date.now().toString(36).toUpperCase()}`,
       status: "COMPLETED",
       paidAt: new Date(),
     });
@@ -318,6 +309,7 @@ const recordPayment = asyncHandler(async (req, res) => {
   });
 });
 
+// 6. Requester verifies or rejects a manual payment
 const verifyManualPayment = asyncHandler(async (req, res) => {
   if (!mongoose.isValidObjectId(req.params.id) || !mongoose.isValidObjectId(req.params.paymentId)) {
     return res.status(400).json({ success: false, message: "Invalid id" });

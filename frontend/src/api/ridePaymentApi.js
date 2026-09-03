@@ -24,8 +24,8 @@ export const markManualPaid = (paymentId, amount, reference) =>
 export const initiateBkashPayment = (paymentId, amount) =>
   client.post(`/ride-payments/${paymentId}/bkash/initiate`, { amount });
 
-export const verifyBkashPayment = (paymentId, paymentID, amount) =>
-  client.post(`/ride-payments/${paymentId}/bkash/verify`, { paymentID, amount });
+export const verifyBkashPayment = (paymentId, trxId) =>
+  client.post(`/ride-payments/${paymentId}/bkash/verify`, { trxId, paymentID: trxId });
 
 export const selectPaymentMethod = (paymentId, method, trxId) =>
   client.post(`/ride-payments/${paymentId}/method`, { method, trxId });

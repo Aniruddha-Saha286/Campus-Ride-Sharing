@@ -13,6 +13,7 @@ const {
   updateRide,
   updateBookingSeats,
 } = require("../controllers/rideController");
+const { settlePayment } = require("../controllers/ridePaymentController");
 
 router.get("/", protect, idVerified, listRides);
 router.get("/mine", protect, idVerified, getMyRides);
@@ -21,6 +22,7 @@ router.put("/:rideId", protect, idVerified, updateRide);
 router.post("/:rideId/requests", protect, idVerified, requestSeat);
 router.put("/:rideId/requests/:requestId", protect, idVerified, respondToRequest);
 router.put("/:rideId/requests/:requestId/seats", protect, idVerified, updateBookingSeats);
+router.put("/:rideId/requests/:requestId/settle-payment", protect, idVerified, settlePayment);
 router.delete("/:rideId/requests/:requestId", protect, idVerified, cancelRequest);
 router.delete("/:rideId", protect, idVerified, cancelRide);
 

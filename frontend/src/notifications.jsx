@@ -24,6 +24,8 @@ const TOAST_META = {
   REQUEST_DECLINED: { title: "Seat Request Declined", tone: "warn" },
   "due-reminder": { title: "Payslip Deadline Alert", tone: "warn" },
   CHAT_MESSAGE: { title: "Direct Message Alert", tone: "info" },
+  SAFETY_REPORT_SUBMITTED: { title: "Safety Concern Submitted", tone: "warn" },
+  SAFETY_REPORT_STATUS_UPDATED: { title: "Safety Concern Updated", tone: "success" },
 };
 
 const getDeletedIds = () => {
@@ -90,6 +92,12 @@ const buildToast = (event) => {
       break;
     case "due-reminder":
       body = event.message || "Today is the last day to pay your due. A late fee starts tomorrow.";
+      break;
+    case "SAFETY_REPORT_SUBMITTED":
+      body = event.message || "Your safety report has been submitted and is currently pending review.";
+      break;
+    case "SAFETY_REPORT_STATUS_UPDATED":
+      body = event.message || `Your safety concern report has been updated to "${event.status || 'Resolved'}" by administrators.`;
       break;
     default:
       return null;

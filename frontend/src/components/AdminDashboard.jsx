@@ -25,6 +25,9 @@ import {
   History,
   Calendar,
   Wallet,
+  ShieldAlert,
+  AlertTriangle,
+  ArrowUpDown,
 } from "lucide-react";
 import {
   getVerifications,
@@ -36,6 +39,11 @@ import {
   getAdminRideTracker,
   getAdminUserRides,
 } from "../api/api";
+import {
+  getAdminSafetyReports,
+  updateAdminSafetyReportStatus,
+} from "../api/safetyReportApi";
+import { onRealtime } from "../api/realtimeBus";
 import { formatTime12Hour, TRIP_META } from "../utils/rideStatusConstants";
 
 
@@ -101,6 +109,15 @@ export default function AdminDashboard() {
   const [trackerFilter, setTrackerFilter] = useState("all");
   const [trackerError, setTrackerError] = useState("");
 
+  // Safety Reports State
+  const [safetyReports, setSafetyReports] = useState([]);
+  const [safetyLoading, setSafetyLoading] = useState(false);
+  const [safetyError, setSafetyError] = useState("");
+  const [safetyFilter, setSafetyFilter] = useState("needs_resolution"); // 'needs_resolution' | 'resolved' | 'all'
+  const [safetySort, setSafetySort] = useState("newest"); // 'newest' | 'oldest'
+  const [safetyBusy, setSafetyBusy] = useState("");
+  const [newReportAlert, setNewReportAlert] = useState("");
+
   // Per-User Ride History State
   const [userRides, setUserRides] = useState(null);
   const [userRidesLoading, setUserRidesLoading] = useState(false);
@@ -109,6 +126,39 @@ export default function AdminDashboard() {
   const handleLogout = () => {
     localStorage.removeItem("adminToken");
     navigate("/admin/login");
+  };
+
+  const loadSafetyReports = async () => {
+    setSafetyLoading(true);
+    setSafetyError("");
+    try {
+      const { data } = await getAdminSafetyReports({
+        status: safetyFilter,
+        sort: safetySort,
+      });
+      setSafetyReports(data.data || []);
+    } catch (err) {
+      if (err.response?.status === 401 || err.response?.status === 403) {
+        handleLogout();
+      } else {
+        setSafetyError(err.response?.data?.message || "Could not load safety reports.");
+      }
+    } finally {
+      setSafetyLoading(false);
+    }
+  };
+
+  const handleUpdateReportStatus = async (reportId, newStatus) => {
+    setSafetyBusy(reportId);
+    setSafetyError("");
+    try {
+      await updateAdminSafetyReportStatus(reportId, newStatus);
+      await loadSafetyReports();
+    } catch (err) {
+      setSafetyError(err.response?.data?.message || "Could not update report status.");
+    } finally {
+      setSafetyBusy("");
+    }
   };
 
   const loadTracker = async () => {
@@ -171,8 +221,20 @@ export default function AdminDashboard() {
   useEffect(() => {
     loadStats();
     loadTracker();
+    loadSafetyReports();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    const off = onRealtime((event) => {
+      if (event?.type === "SAFETY_REPORT_CREATED") {
+        setNewReportAlert(event.body || "A new safety concern has just been reported!");
+        loadSafetyReports();
+      }
+    });
+    return () => off();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [safetyFilter, safetySort]);
 
   const load = async (status) => {
     setLoading(true);
@@ -194,8 +256,9 @@ export default function AdminDashboard() {
   useEffect(() => {
     if (tab === "verifications") load(filter);
     if (tab === "tracker") loadTracker();
+    if (tab === "safety") loadSafetyReports();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab, filter]);
+  }, [tab, filter, safetyFilter, safetySort]);
 
   useEffect(() => {
     if (tab !== "users") return;
@@ -293,10 +356,33 @@ export default function AdminDashboard() {
           {tabButton("verifications", "ID Verification", <ShieldCheck size={15} />)}
           {tabButton("users", "Users", <Users size={15} />)}
           {tabButton("tracker", "Live Ride Tracker", <Car size={15} />)}
+          <button
+            onClick={() => {
+              setTab("safety");
+              setNewReportAlert("");
+            }}
+            className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition ${
+              tab === "safety"
+                ? "bg-rose-600 text-white shadow-sm"
+                : "border border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+            }`}
+          >
+            <ShieldAlert size={15} />
+            Safety Concerns
+            {safetyReports.filter((r) => r.status !== "Resolved").length > 0 && (
+              <span
+                className={`rounded-full px-1.5 py-0.2 text-[10px] font-extrabold ${
+                  tab === "safety" ? "bg-white text-rose-700" : "bg-rose-100 text-rose-700"
+                }`}
+              >
+                {safetyReports.filter((r) => r.status !== "Resolved").length}
+              </span>
+            )}
+          </button>
         </div>
 
         <div className="mb-6 flex flex-wrap gap-4">
-          <div className="flex flex-1 min-w-[200px] items-center justify-between gap-4 rounded-2xl border border-slate-100 bg-white p-5 shadow-card">
+          <div className="flex flex-1 min-w-[180px] items-center justify-between gap-4 rounded-2xl border border-slate-100 bg-white p-5 shadow-card">
             <div>
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                 Registered students
@@ -314,7 +400,7 @@ export default function AdminDashboard() {
             </div>
           </div>
 
-          <div className="flex flex-1 min-w-[200px] items-center justify-between gap-4 rounded-2xl border border-slate-100 bg-white p-5 shadow-card">
+          <div className="flex flex-1 min-w-[180px] items-center justify-between gap-4 rounded-2xl border border-slate-100 bg-white p-5 shadow-card">
             <div>
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                 Active Live Trips
@@ -328,17 +414,17 @@ export default function AdminDashboard() {
             </div>
           </div>
 
-          <div className="flex flex-1 min-w-[200px] items-center justify-between gap-4 rounded-2xl border border-slate-100 bg-white p-5 shadow-card">
+          <div className="flex flex-1 min-w-[180px] items-center justify-between gap-4 rounded-2xl border border-slate-100 bg-white p-5 shadow-card">
             <div>
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                Completed Trips
+                Safety Concerns
               </p>
-              <p className="mt-1 text-3xl font-extrabold text-emerald-600">
-                {trackerList.filter((t) => t.tripStatus === "completed").length}
+              <p className="mt-1 text-3xl font-extrabold text-rose-600">
+                {safetyReports.filter((r) => r.status !== "Resolved").length}
               </p>
             </div>
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600">
-              <BadgeCheck size={22} />
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-rose-50 text-rose-600">
+              <ShieldAlert size={22} />
             </div>
           </div>
         </div>
@@ -572,7 +658,7 @@ export default function AdminDashboard() {
               </div>
             )}
           </>
-        ) : (
+        ) : tab === "tracker" ? (
           <>
             {/* Live Ride Tracker Tab View */}
             <div className="mb-4 space-y-3 rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm">
@@ -734,6 +820,272 @@ export default function AdminDashboard() {
                       </div>
                     );
                   })}
+              </div>
+            )}
+          </>
+        ) : (
+          <>
+            {/* Safety Concerns & Reports Tab View */}
+            {newReportAlert && (
+              <div className="mb-4 flex items-center justify-between rounded-xl bg-rose-50 border border-rose-200 p-4 text-xs font-bold text-rose-800 animate-pulse">
+                <div className="flex items-center gap-2">
+                  <ShieldAlert size={16} className="text-rose-600 shrink-0" />
+                  <span>{newReportAlert}</span>
+                </div>
+                <button
+                  onClick={() => setNewReportAlert("")}
+                  className="rounded-lg bg-rose-200/60 px-2 py-1 hover:bg-rose-200 text-rose-800 cursor-pointer"
+                >
+                  Dismiss
+                </button>
+              </div>
+            )}
+
+            <div className="mb-4 space-y-3 rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                {/* Separate Sections for Needs Resolution vs Resolved */}
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    { id: "needs_resolution", label: "Needs Resolution" },
+                    { id: "resolved", label: "Resolved Reports" },
+                    { id: "all", label: "All Complaints" },
+                  ].map((filterTab) => {
+                    const active = safetyFilter === filterTab.id;
+                    const count =
+                      filterTab.id === "needs_resolution"
+                        ? safetyReports.filter((r) => r.status !== "Resolved").length
+                        : filterTab.id === "resolved"
+                        ? safetyReports.filter((r) => r.status === "Resolved").length
+                        : safetyReports.length;
+
+                    return (
+                      <button
+                        key={filterTab.id}
+                        onClick={() => setSafetyFilter(filterTab.id)}
+                        className={`flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-bold transition cursor-pointer ${
+                          active
+                            ? "bg-rose-600 text-white shadow-xs"
+                            : "bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-900"
+                        }`}
+                      >
+                        {filterTab.label}
+                        <span
+                          className={`rounded-full px-1.5 py-0.2 text-[10px] ${
+                            active ? "bg-rose-500 text-white" : "bg-slate-200 text-slate-700"
+                          }`}
+                        >
+                          {count}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Sort Dropdown & Refresh */}
+                <div className="flex items-center gap-2">
+                  <div className="relative flex items-center">
+                    <ArrowUpDown size={13} className="pointer-events-none absolute left-3 text-slate-400" />
+                    <select
+                      value={safetySort}
+                      onChange={(e) => setSafetySort(e.target.value)}
+                      className="rounded-xl border border-slate-200 bg-white py-1.5 pl-8 pr-7 text-xs font-bold text-slate-700 shadow-2xs outline-none transition hover:border-slate-300 focus:border-rose-500 focus:ring-2 focus:ring-rose-100 cursor-pointer"
+                    >
+                      <option value="newest">Newest First</option>
+                      <option value="oldest">Oldest First</option>
+                    </select>
+                  </div>
+                  <button
+                    onClick={loadSafetyReports}
+                    className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:border-slate-300 cursor-pointer"
+                  >
+                    Refresh
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {safetyError && (
+              <div className="mb-4 rounded-lg bg-rose-50 px-4 py-2.5 text-sm font-medium text-rose-600">
+                {safetyError}
+              </div>
+            )}
+
+            {safetyLoading ? (
+              <div className="flex min-h-[300px] items-center justify-center">
+                <Loader2 className="animate-spin text-rose-600" size={28} />
+              </div>
+            ) : safetyReports.length === 0 ? (
+              <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-white px-6 py-16 text-center shadow-card">
+                <ShieldAlert size={30} className="text-slate-300" />
+                <p className="mt-3 text-sm font-bold text-slate-700">No safety concerns reported in this view</p>
+                <p className="mt-1 text-xs text-slate-400">
+                  When students or drivers report safety concerns, they will appear here.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {safetyReports.map((report) => {
+                  const trip = report.trip;
+                  const isResolved = report.status === "Resolved";
+                  const isReviewed = report.status === "Reviewed";
+                  const isPending = report.status === "Pending";
+
+                  return (
+                    <div
+                      key={report._id}
+                      className="overflow-hidden rounded-2xl border border-slate-100 bg-white p-5 shadow-card transition-shadow hover:shadow-md space-y-4"
+                    >
+                      {/* Header: Category & Status */}
+                      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3">
+                        <div className="flex items-center gap-2">
+                          <span className="inline-flex items-center gap-1.5 rounded-lg bg-rose-50 border border-rose-200 px-3 py-1 text-xs font-bold text-rose-700">
+                            <AlertTriangle size={13} className="text-rose-600" />
+                            {report.category}
+                          </span>
+                          <span className="text-xs text-slate-400">
+                            Reported {formatDate(report.createdAt)}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold ${
+                              isResolved
+                                ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                : isReviewed
+                                ? "bg-blue-50 text-blue-700 border border-blue-200"
+                                : "bg-amber-50 text-amber-700 border border-amber-200"
+                            }`}
+                          >
+                            <span
+                              className={`h-2 w-2 rounded-full ${
+                                isResolved
+                                  ? "bg-emerald-500"
+                                  : isReviewed
+                                  ? "bg-blue-500"
+                                  : "bg-amber-500 animate-pulse"
+                              }`}
+                            />
+                            {report.status}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Description Box */}
+                      <div className="rounded-xl bg-slate-50/80 p-3.5 border border-slate-100">
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                          Concern Description
+                        </p>
+                        <p className="text-xs text-slate-800 leading-relaxed font-medium">
+                          "{report.description}"
+                        </p>
+                      </div>
+
+                      {/* Trip Details (Clean Route, NO raw Trip ID) */}
+                      {trip && (
+                        <div className="rounded-xl bg-slate-50/50 p-3 border border-slate-100/80">
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">
+                            Associated Trip Route
+                          </p>
+                          <div className="flex flex-wrap items-center gap-2 text-xs font-bold text-slate-800">
+                            <span className="flex items-center gap-1 text-slate-700">
+                              <MapPin size={12} className="text-emerald-600" />
+                              {shortLabel(trip.pickup)}
+                            </span>
+                            <Navigation size={12} className="text-slate-400" />
+                            <span className="flex items-center gap-1 text-slate-700">
+                              <MapPin size={12} className="text-rose-600" />
+                              {shortLabel(trip.dropoff)}
+                            </span>
+                            {trip.departureTime && (
+                              <span className="ml-auto flex items-center gap-1 font-semibold text-slate-500">
+                                <Clock3 size={12} />
+                                {formatTime12Hour(trip.departureTime)}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Reporter & Driver Details Grid */}
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 text-xs">
+                        {/* Reporter details */}
+                        <div className="rounded-xl bg-slate-50 p-3 border border-slate-100">
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                            Reported By (Complainant)
+                          </p>
+                          <p className="font-bold text-slate-800 mt-1">{report.reporter?.name}</p>
+                          <p className="text-[11px] text-slate-500">
+                            {report.reporter?.studentId} · {report.reporter?.department} ({report.reporter?.year})
+                          </p>
+                          <p className="text-[11px] text-slate-400">
+                            {report.reporter?.phone || report.reporter?.universityEmail}
+                          </p>
+                        </div>
+
+                        {/* Driver details */}
+                        <div className="rounded-xl bg-slate-50 p-3 border border-slate-100">
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                            Driver of the Trip
+                          </p>
+                          <p className="font-bold text-slate-800 mt-1">{trip?.poster?.name || "—"}</p>
+                          <p className="text-[11px] text-slate-500">
+                            {trip?.poster?.studentId} · {trip?.poster?.department} ({trip?.poster?.year})
+                          </p>
+                          <p className="text-[11px] text-slate-400">
+                            {trip?.poster?.phone || trip?.poster?.universityEmail}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Admin Action Buttons */}
+                      <div className="flex flex-wrap items-center justify-end gap-2 border-t border-slate-100 pt-3">
+                        {isPending && (
+                          <button
+                            onClick={() => handleUpdateReportStatus(report._id, "Reviewed")}
+                            disabled={safetyBusy === report._id}
+                            className="flex items-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-bold text-blue-700 transition hover:bg-blue-100 disabled:opacity-60 cursor-pointer"
+                          >
+                            {safetyBusy === report._id ? (
+                              <Loader2 size={12} className="animate-spin" />
+                            ) : (
+                              <Check size={12} />
+                            )}
+                            Mark as Reviewed
+                          </button>
+                        )}
+
+                        {!isResolved ? (
+                          <button
+                            onClick={() => handleUpdateReportStatus(report._id, "Resolved")}
+                            disabled={safetyBusy === report._id}
+                            className="flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white transition hover:bg-emerald-700 shadow-xs disabled:opacity-60 cursor-pointer"
+                          >
+                            {safetyBusy === report._id ? (
+                              <Loader2 size={12} className="animate-spin" />
+                            ) : (
+                              <Check size={12} />
+                            )}
+                            Resolve Concern
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => handleUpdateReportStatus(report._id, "Pending")}
+                            disabled={safetyBusy === report._id}
+                            className="flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-600 transition hover:bg-slate-100 disabled:opacity-60 cursor-pointer"
+                          >
+                            {safetyBusy === report._id ? (
+                              <Loader2 size={12} className="animate-spin" />
+                            ) : (
+                              <Clock3 size={12} />
+                            )}
+                            Reopen Report
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </>

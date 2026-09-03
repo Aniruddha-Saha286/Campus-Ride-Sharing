@@ -13,12 +13,9 @@ const {
   bkashCallback,
   selectPaymentMethod,
   submitManualStatus,
-  markDue,
-  setPaymentAmount,
   requestRefund,
   confirmRefund,
   cancelRefundRequest,
-  createManualDue,
   getPaymentSummary,
   getDues,
   getNetBalances,
@@ -36,14 +33,11 @@ router.get("/balances", protect, idVerified, getNetBalances);
 router.get("/transactions/:id/receipt", protect, idVerified, getTransactionReceipt);
 router.delete("/transactions/:id", protect, idVerified, deleteTransaction);
 router.get("/transactions", protect, idVerified, getTransactionHistory);
-router.post("/manual-due", protect, idVerified, createManualDue);
 router.post("/ride/:rideId", protect, idVerified, createRidePayments);
 router.get("/ride/:rideId", protect, idVerified, getRidePaymentManagement);
 router.post("/bkash/callback", bkashCallback);
 router.post("/:paymentId/method", protect, idVerified, selectPaymentMethod);
 router.post("/:paymentId/manual-status", protect, idVerified, submitManualStatus);
-router.post("/:paymentId/mark-due", protect, idVerified, markDue);
-router.post("/:paymentId/amount", protect, idVerified, setPaymentAmount);
 router.post("/:paymentId/refund/request", protect, idVerified, requestRefund);
 router.post("/:paymentId/refund/cancel", protect, idVerified, cancelRefundRequest);
 router.post("/:paymentId/refund/confirm", protect, idVerified, confirmRefund);

@@ -15,11 +15,9 @@ import NewRide from "./components/NewRide.jsx";
 import AdminLogin from "./components/AdminLogin.jsx";
 import AdminDashboard from "./components/AdminDashboard.jsx";
 import Banned from "./components/Banned.jsx";
-import PaymentRequests from "./components/PaymentRequests.jsx";
 import PaymentDetails from "./components/PaymentDetails.jsx";
 import RidePaymentManagement from "./components/RidePaymentManagement.jsx";
 import RidePaymentDetails from "./components/RidePaymentDetails.jsx";
-import RecentTransactions from "./components/RecentTransactions.jsx";
 import TransactionHistory from "./components/TransactionHistory.jsx";
 import NetBalances from "./components/NetBalances.jsx";
 import NotificationToast from "./components/NotificationToast.jsx";
@@ -31,6 +29,7 @@ import DashboardLayout from "./components/layout/DashboardLayout.jsx";
 import FindRidePage from "./components/FindRidePage.jsx";
 import MyRidesPage from "./components/MyRidesPage.jsx";
 import RecurringPage from "./components/RecurringPage.jsx";
+import MySafetyReports from "./components/MySafetyReports.jsx";
 import { AuthContext } from "./auth.js";
 import { NotificationProvider } from "./notifications.jsx";
 
@@ -201,7 +200,7 @@ const router = createBrowserRouter([
       },
       {
         path: "/payments",
-        element: <PaymentRequests />,
+        element: <Navigate to="/transactions" replace />,
       },
       {
         path: "/payments/:id",
@@ -217,7 +216,7 @@ const router = createBrowserRouter([
       },
       {
         path: "/recent-transactions",
-        element: <RecentTransactions />,
+        element: <Navigate to="/transactions" replace />,
       },
       {
         path: "/transactions",
@@ -254,6 +253,14 @@ const router = createBrowserRouter([
       {
         path: "/recurring",
         element: <RecurringPage />,
+      },
+      {
+        path: "/my-safety-reports",
+        element: <MySafetyReports />,
+      },
+      {
+        path: "/safety-reports",
+        element: <Navigate to="/my-safety-reports" replace />,
       },
     ],
   },

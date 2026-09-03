@@ -1,6 +1,23 @@
 import React, { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import {ArrowLeft,Loader2,X,BadgeCheck,Wallet,CreditCard,HandCoins,Receipt,Check,Download,Clock3,FileText,CheckCircle2,Hourglass,Inbox,
+import {
+  ArrowLeft,
+  Loader2,
+  X,
+  BadgeCheck,
+  Wallet,
+  CreditCard,
+  HandCoins,
+  Receipt,
+  Check,
+  Download,
+  Clock3,
+  FileText,
+  CheckCircle2,
+  Hourglass,
+  Inbox,
+  Copy,
+  Smartphone,
 } from "lucide-react";
 import {
   getPaymentRequest,
@@ -108,6 +125,8 @@ export default function PaymentDetails() {
   const [historyError, setHistoryError] = useState("");
   const [busy, setBusy] = useState("");
   const [bkashAmount, setBkashAmount] = useState("");
+  const [bkashTrxId, setBkashTrxId] = useState("");
+  const [phoneCopied, setPhoneCopied] = useState(false);
   const [manualAmount, setManualAmount] = useState("");
   const [manualReference, setManualReference] = useState("");
   const [receipt, setReceipt] = useState(null);
@@ -154,14 +173,25 @@ export default function PaymentDetails() {
   const meta = STATUS_META[data.status] || STATUS_META.UNPAID;
   const remaining = data.summary?.remaining || 0;
 
+  const handleCopyPhone = (phone) => {
+    if (!phone) return;
+    navigator.clipboard.writeText(phone);
+    setPhoneCopied(true);
+    setTimeout(() => setPhoneCopied(false), 2000);
+  };
+
   const payWithBkash = async () => {
+    if (!bkashTrxId.trim()) {
+      setPayError("Please enter the bKash Transaction ID (TrxID).");
+      return;
+    }
     setBusy("bkash");
     setPayError("");
     try {
-      const res = await recordBkashPayment(id, Number(bkashAmount));
+      const res = await recordBkashPayment(id, remaining, bkashTrxId.trim());
       const { payment, summary } = res.data.data;
       await load();
-      setBkashAmount("");
+      setBkashTrxId("");
       setReceipt({
         requestCode: data.requestCode,
         requester: data.requester,
@@ -352,35 +382,73 @@ export default function PaymentDetails() {
               </div>
             )}
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-              <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-card">
+              <div className="rounded-2xl border border-rose-200 bg-gradient-to-br from-rose-50/60 via-white to-pink-50/40 p-5 shadow-card">
                 <div className="flex items-center gap-2">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-pink-50 text-pink-600">
-                    <CreditCard size={17} />
+                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-rose-600 text-white shadow-xs">
+                    <Smartphone size={17} />
                   </div>
                   <div>
-                    <h3 className="text-sm font-bold text-slate-800">Option A — Online (bKash)</h3>
-                    <p className="text-xs text-slate-400">Receipt is generated automatically after payment.</p>
+                    <h3 className="text-sm font-bold text-slate-800">Option A — bKash (Send Money)</h3>
+                    <p className="text-xs text-slate-400">Send money directly from your bKash app.</p>
                   </div>
                 </div>
-                <div className="mt-4 space-y-3">
-                  <input
-                    type="number"
-                    min="0.01"
-                    step="0.01"
-                    max={remaining}
-                    value={bkashAmount}
-                    onChange={(e) => setBkashAmount(e.target.value)}
-                    placeholder={`Amount (max ${formatTaka(remaining)})`}
-                    className={paymentInputClass}
-                  />
-                  <button
-                    onClick={payWithBkash}
-                    disabled={busy === "bkash" || !bkashAmount}
-                    className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-pink-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-pink-700 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    {busy === "bkash" ? <Loader2 className="animate-spin" size={15} /> : <CreditCard size={15} />}
-                    {busy === "bkash" ? "Processing bKash..." : "Pay with bKash"}
-                  </button>
+
+                <div className="mt-4 space-y-2.5">
+                  <div className="flex items-start gap-2.5 rounded-lg border border-rose-100 bg-white p-2.5 text-xs shadow-xs">
+                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-rose-100 font-bold text-rose-700 text-[10px]">1</span>
+                    <span className="text-slate-700">Open your <strong>bKash App</strong> on your phone.</span>
+                  </div>
+
+                  <div className="flex items-start gap-2.5 rounded-lg border border-rose-100 bg-white p-2.5 text-xs shadow-xs">
+                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-rose-100 font-bold text-rose-700 text-[10px]">2</span>
+                    <span className="text-slate-700">Go to <strong>Send Money</strong>.</span>
+                  </div>
+
+                  <div className="flex items-start gap-2.5 rounded-lg border border-rose-100 bg-white p-2.5 text-xs shadow-xs">
+                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-rose-100 font-bold text-rose-700 text-[10px]">3</span>
+                    <div className="flex-1">
+                      <span className="text-slate-700 block mb-1">
+                        Send <strong>{formatTaka(remaining)}</strong> to requester's phone:
+                      </span>
+                      <div className="flex items-center justify-between rounded-md bg-slate-50 border border-slate-200 px-2.5 py-1.5">
+                        <span className="font-mono font-bold text-slate-800 text-xs">{data.requester?.phone || "017XXXXXXXX"}</span>
+                        {data.requester?.phone && (
+                          <button
+                            type="button"
+                            onClick={() => handleCopyPhone(data.requester.phone)}
+                            className="inline-flex items-center gap-1 rounded bg-rose-600 px-2 py-0.5 text-[10px] font-bold text-white shadow-xs hover:bg-rose-700"
+                          >
+                            {phoneCopied ? <Check size={10} /> : <Copy size={10} />}
+                            {phoneCopied ? "Copied!" : "Copy"}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-2.5 rounded-lg border border-rose-100 bg-white p-2.5 text-xs shadow-xs">
+                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-rose-100 font-bold text-rose-700 text-[10px]">4</span>
+                    <div className="flex-1">
+                      <span className="text-slate-700 block mb-1.5">Paste the bKash <strong>TrxID</strong>:</span>
+                      <div className="flex flex-col sm:flex-row gap-2">
+                        <input
+                          type="text"
+                          value={bkashTrxId}
+                          onChange={(e) => setBkashTrxId(e.target.value.toUpperCase())}
+                          placeholder="e.g. 9M7A8K9L"
+                          className="flex-1 rounded-lg border border-slate-200 px-3 py-2 text-xs font-mono font-bold uppercase tracking-wider outline-none focus:border-rose-500 bg-white"
+                        />
+                        <button
+                          type="button"
+                          onClick={payWithBkash}
+                          disabled={busy === "bkash" || !bkashTrxId.trim()}
+                          className="rounded-lg bg-rose-600 px-3.5 py-2 text-xs font-bold text-white shadow-xs hover:bg-rose-700 disabled:opacity-50 shrink-0"
+                        >
+                          {busy === "bkash" ? "Submitting..." : "Submit bKash"}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
 
