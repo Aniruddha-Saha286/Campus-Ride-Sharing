@@ -11,6 +11,8 @@ const TEST_FILES = [
   "07_ride_history.test.js",
   "08_chat.test.js",
   "09_ride_payment_smoke.test.js",
+  "10_safety_reports_smoke.test.js",
+  "11_user_feedback_smoke.test.js",
 ];
 
 const runTest = (file) =>

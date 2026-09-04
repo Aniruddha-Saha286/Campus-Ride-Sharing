@@ -16,6 +16,7 @@ import {
   ChevronRight,
   Users,
   ShieldAlert,
+  Headphones,
 } from "lucide-react";
 import SidebarItem from "./SidebarItem.jsx";
 
@@ -36,6 +37,7 @@ const NAV_ITEMS = [
   { to: "/recurring", icon: Repeat2, label: "Recurring Commute" },
   { to: "/ride-tracker", icon: Satellite, label: "Ride Tracker" },
   { to: "/my-safety-reports", icon: ShieldAlert, label: "Safety Reports" },
+  { to: "/contact-admin", icon: Headphones, label: "Contact Admin" },
   { divider: true },
   { to: "/profile", icon: User, label: "Profile" },
 ];

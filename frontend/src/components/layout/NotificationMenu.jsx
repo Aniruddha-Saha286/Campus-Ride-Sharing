@@ -58,6 +58,8 @@ export default function NotificationMenu() {
       navigate(`/ride-payments/${n.paymentId}`);
     } else if (n.type === "CHAT_MESSAGE" || n.rideId) {
       navigate("/my-rides");
+    } else if (n.type?.startsWith("FEEDBACK") || n.feedbackId) {
+      navigate("/contact-admin");
     }
   };
 

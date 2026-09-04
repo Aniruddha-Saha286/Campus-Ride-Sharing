@@ -60,6 +60,18 @@ export default function NotificationToast() {
                   Open My Rides
                 </button>
               )}
+              {(toast.type?.startsWith("FEEDBACK") || toast.feedbackId) && (
+                <button
+                  onClick={() => {
+                    navigate("/contact-admin");
+                    dismiss(toast.id);
+                  }}
+                  className="mt-2 flex items-center gap-1 text-xs font-semibold text-emerald-600 hover:underline"
+                >
+                  <MessageSquare size={12} />
+                  View Admin Response
+                </button>
+              )}
             </div>
             <button
               onClick={() => dismiss(toast.id)}

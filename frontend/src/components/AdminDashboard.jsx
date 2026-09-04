@@ -28,6 +28,16 @@ import {
   ShieldAlert,
   AlertTriangle,
   ArrowUpDown,
+  MessageSquare,
+  Send,
+  Headphones,
+  Bug,
+  ThumbsUp,
+  HelpCircle,
+  AlertCircle,
+  RefreshCw,
+  CheckCircle2,
+  Trash2,
 } from "lucide-react";
 import {
   getVerifications,
@@ -43,6 +53,11 @@ import {
   getAdminSafetyReports,
   updateAdminSafetyReportStatus,
 } from "../api/safetyReportApi";
+import {
+  getAdminFeedbacks,
+  updateAdminFeedback,
+  deleteAdminFeedback,
+} from "../api/userFeedbackApi";
 import { onRealtime } from "../api/realtimeBus";
 import { formatTime12Hour, TRIP_META } from "../utils/rideStatusConstants";
 
@@ -161,6 +176,70 @@ export default function AdminDashboard() {
     }
   };
 
+  const [feedbacks, setFeedbacks] = useState([]);
+  const [feedbackLoading, setFeedbackLoading] = useState(false);
+  const [feedbackError, setFeedbackError] = useState("");
+  const [feedbackStatusFilter, setFeedbackStatusFilter] = useState("all");
+  const [feedbackTypeFilter, setFeedbackTypeFilter] = useState("all");
+  const [feedbackSearch, setFeedbackSearch] = useState("");
+  const [feedbackBusy, setFeedbackBusy] = useState("");
+  const [feedbackReplyInputs, setFeedbackReplyInputs] = useState({});
+  const [newFeedbackAlert, setNewFeedbackAlert] = useState("");
+
+  const loadFeedbacks = async () => {
+    setFeedbackLoading(true);
+    setFeedbackError("");
+    try {
+      const { data } = await getAdminFeedbacks({
+        status: feedbackStatusFilter,
+        type: feedbackTypeFilter,
+        search: feedbackSearch,
+      });
+      setFeedbacks(data.data || []);
+    } catch (err) {
+      if (err.response?.status === 401 || err.response?.status === 403) {
+        handleLogout();
+      } else {
+        setFeedbackError(err.response?.data?.message || "Could not load user feedback.");
+      }
+    } finally {
+      setFeedbackLoading(false);
+    }
+  };
+
+  const handleUpdateFeedback = async (id, newStatus, customReply) => {
+    setFeedbackBusy(id);
+    setFeedbackError("");
+    try {
+      const payload = {};
+      if (newStatus) payload.status = newStatus;
+      if (customReply !== undefined) payload.adminReply = customReply;
+      await updateAdminFeedback(id, payload);
+      await loadFeedbacks();
+    } catch (err) {
+      setFeedbackError(err.response?.data?.message || "Could not update message status.");
+    } finally {
+      setFeedbackBusy("");
+    }
+  };
+
+  const handleDeleteFeedback = async (id) => {
+    if (!window.confirm("Are you sure you want to permanently delete this user message/complaint?")) {
+      return;
+    }
+    setFeedbackBusy(id);
+    setFeedbackError("");
+    try {
+      await deleteAdminFeedback(id);
+      await loadFeedbacks();
+    } catch (err) {
+      setFeedbackError(err.response?.data?.message || "Could not delete feedback.");
+    } finally {
+      setFeedbackBusy("");
+    }
+  };
+
+
   const loadTracker = async () => {
     setTrackerLoading(true);
     setTrackerError("");
@@ -222,6 +301,7 @@ export default function AdminDashboard() {
     loadStats();
     loadTracker();
     loadSafetyReports();
+    loadFeedbacks();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -231,10 +311,14 @@ export default function AdminDashboard() {
         setNewReportAlert(event.body || "A new safety concern has just been reported!");
         loadSafetyReports();
       }
+      if (event?.type === "FEEDBACK_SUBMITTED") {
+        setNewFeedbackAlert(event.body || "A student submitted a new message / complaint / feedback!");
+        loadFeedbacks();
+      }
     });
     return () => off();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [safetyFilter, safetySort]);
+  }, [safetyFilter, safetySort, feedbackStatusFilter, feedbackTypeFilter]);
 
   const load = async (status) => {
     setLoading(true);
@@ -257,8 +341,9 @@ export default function AdminDashboard() {
     if (tab === "verifications") load(filter);
     if (tab === "tracker") loadTracker();
     if (tab === "safety") loadSafetyReports();
+    if (tab === "feedback") loadFeedbacks();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab, filter, safetyFilter, safetySort]);
+  }, [tab, filter, safetyFilter, safetySort, feedbackStatusFilter, feedbackTypeFilter]);
 
   useEffect(() => {
     if (tab !== "users") return;
@@ -266,6 +351,13 @@ export default function AdminDashboard() {
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, search]);
+
+  useEffect(() => {
+    if (tab !== "feedback") return;
+    const timer = setTimeout(() => loadFeedbacks(), 300);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, feedbackSearch]);
 
   const openStudent = (student) => {
     setSelected(student);
@@ -379,6 +471,29 @@ export default function AdminDashboard() {
               </span>
             )}
           </button>
+          <button
+            onClick={() => {
+              setTab("feedback");
+              setNewFeedbackAlert("");
+            }}
+            className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition cursor-pointer ${
+              tab === "feedback"
+                ? "bg-indigo-600 text-white shadow-sm"
+                : "border border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+            }`}
+          >
+            <MessageSquare size={15} />
+            User Feedback & Messages
+            {feedbacks.filter((f) => f.status === "Pending").length > 0 && (
+              <span
+                className={`rounded-full px-1.5 py-0.2 text-[10px] font-extrabold ${
+                  tab === "feedback" ? "bg-white text-indigo-700" : "bg-indigo-100 text-indigo-700"
+                }`}
+              >
+                {feedbacks.filter((f) => f.status === "Pending").length}
+              </span>
+            )}
+          </button>
         </div>
 
         <div className="mb-6 flex flex-wrap gap-4">
@@ -425,6 +540,20 @@ export default function AdminDashboard() {
             </div>
             <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-rose-50 text-rose-600">
               <ShieldAlert size={22} />
+            </div>
+          </div>
+
+          <div className="flex flex-1 min-w-[180px] items-center justify-between gap-4 rounded-2xl border border-slate-100 bg-white p-5 shadow-card">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Pending Feedback
+              </p>
+              <p className="mt-1 text-3xl font-extrabold text-indigo-600">
+                {feedbacks.filter((f) => f.status === "Pending").length}
+              </p>
+            </div>
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600">
+              <MessageSquare size={22} />
             </div>
           </div>
         </div>
@@ -823,7 +952,7 @@ export default function AdminDashboard() {
               </div>
             )}
           </>
-        ) : (
+        ) : tab === "safety" ? (
           <>
             {/* Safety Concerns & Reports Tab View */}
             {newReportAlert && (
@@ -1082,6 +1211,346 @@ export default function AdminDashboard() {
                             Reopen Report
                           </button>
                         )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </>
+        ) : (
+          <>
+            {newFeedbackAlert && (
+              <div className="mb-4 flex items-center justify-between rounded-xl bg-indigo-50 border border-indigo-200 p-4 text-xs font-bold text-indigo-800 animate-pulse">
+                <div className="flex items-center gap-2">
+                  <MessageSquare size={16} className="text-indigo-600 shrink-0" />
+                  <span>{newFeedbackAlert}</span>
+                </div>
+                <button
+                  onClick={() => setNewFeedbackAlert("")}
+                  className="rounded-lg bg-indigo-200/60 px-2 py-1 hover:bg-indigo-200 text-indigo-800 cursor-pointer"
+                >
+                  Dismiss
+                </button>
+              </div>
+            )}
+
+            <div className="mb-4 space-y-3 rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    { id: "all", label: "All Messages" },
+                    { id: "pending", label: "Pending Action" },
+                    { id: "reviewed", label: "Reviewed" },
+                    { id: "resolved", label: "Resolved" },
+                  ].map((filterTab) => {
+                    const active = feedbackStatusFilter === filterTab.id;
+                    const count =
+                      filterTab.id === "pending"
+                        ? feedbacks.filter((f) => f.status === "Pending").length
+                        : filterTab.id === "reviewed"
+                        ? feedbacks.filter((f) => f.status === "Reviewed").length
+                        : filterTab.id === "resolved"
+                        ? feedbacks.filter((f) => f.status === "Resolved").length
+                        : feedbacks.length;
+
+                    return (
+                      <button
+                        key={filterTab.id}
+                        onClick={() => setFeedbackStatusFilter(filterTab.id)}
+                        className={`flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-bold transition cursor-pointer ${
+                          active
+                            ? "bg-indigo-600 text-white shadow-xs"
+                            : "bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-900"
+                        }`}
+                      >
+                        {filterTab.label}
+                        <span
+                          className={`rounded-full px-1.5 py-0.2 text-[10px] ${
+                            active ? "bg-indigo-500 text-white" : "bg-slate-200 text-slate-700"
+                          }`}
+                        >
+                          {count}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-semibold text-slate-500">Type:</span>
+                  <select
+                    value={feedbackTypeFilter}
+                    onChange={(e) => setFeedbackTypeFilter(e.target.value)}
+                    className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                  >
+                    <option value="all">All Types</option>
+                    <option value="Complaint">Complaints</option>
+                    <option value="Feedback">Feedback</option>
+                    <option value="Bug Report">Bug Reports</option>
+                    <option value="General Inquiry">General Inquiries</option>
+                    <option value="Other">Other</option>
+                  </select>
+
+                  <button
+                    onClick={() => loadFeedbacks()}
+                    disabled={feedbackLoading}
+                    className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition cursor-pointer"
+                  >
+                    <RefreshCw size={13} className={feedbackLoading ? "animate-spin" : ""} />
+                    Refresh
+                  </button>
+                </div>
+              </div>
+
+              <div className="relative">
+                <Search
+                  size={15}
+                  className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"
+                />
+                <input
+                  value={feedbackSearch}
+                  onChange={(e) => setFeedbackSearch(e.target.value)}
+                  placeholder="Search by student name, ID, email, subject, or message content..."
+                  className="w-full rounded-xl border border-slate-200 bg-white py-2 pl-10 pr-10 text-xs sm:text-sm text-slate-800 outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+                />
+                {feedbackSearch && (
+                  <button
+                    onClick={() => setFeedbackSearch("")}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {feedbackError && (
+              <div className="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs font-semibold text-rose-800">
+                {feedbackError}
+              </div>
+            )}
+
+            {feedbackLoading && feedbacks.length === 0 ? (
+              <div className="flex min-h-[300px] flex-col items-center justify-center rounded-2xl border border-slate-200 bg-white py-12 text-slate-400">
+                <Loader2 size={32} className="animate-spin text-indigo-600 mb-2" />
+                <p className="text-sm font-medium">Loading user feedback & messages...</p>
+              </div>
+            ) : feedbacks.length === 0 ? (
+              <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-white px-6 py-16 text-center shadow-sm">
+                <div className="rounded-full bg-indigo-50 p-3 text-indigo-500 mb-3">
+                  <Headphones size={28} />
+                </div>
+                <h3 className="text-base font-bold text-slate-800">No messages found</h3>
+                <p className="mt-1 text-xs text-slate-400 max-w-sm">
+                  {feedbackSearch
+                    ? `No submissions matched "${feedbackSearch}".`
+                    : "No user complaints or feedback match the selected filters."}
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {feedbacks.map((item) => {
+                  const isResolved = item.status === "Resolved";
+                  const isReviewed = item.status === "Reviewed";
+
+                  const typeStyles = {
+                    Complaint: "bg-rose-50 text-rose-700 border-rose-200",
+                    Feedback: "bg-emerald-50 text-emerald-700 border-emerald-200",
+                    "Bug Report": "bg-amber-50 text-amber-700 border-amber-200",
+                    "General Inquiry": "bg-sky-50 text-sky-700 border-sky-200",
+                    Other: "bg-slate-100 text-slate-700 border-slate-200",
+                  }[item.type] || "bg-slate-100 text-slate-700 border-slate-200";
+
+                  const replyDraft =
+                    feedbackReplyInputs[item._id] !== undefined
+                      ? feedbackReplyInputs[item._id]
+                      : item.adminReply || "";
+
+                  return (
+                    <div
+                      key={item._id}
+                      className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:shadow-md"
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 pb-3">
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-indigo-600 font-bold text-white shadow-xs">
+                            {item.user?.name?.charAt(0) || "U"}
+                          </div>
+                          <div>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <h4 className="text-sm font-bold text-slate-900">
+                                {item.user?.name || "Unknown Student"}
+                              </h4>
+                              <span className="text-xs text-slate-400">
+                                {item.user?.studentId || "No ID"}
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-slate-500">
+                              {item.user?.universityEmail} {item.user?.phone && `· ${item.user.phone}`}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <span className={`inline-flex items-center rounded-lg border px-2.5 py-1 text-xs font-bold ${typeStyles}`}>
+                            {item.type}
+                          </span>
+
+                          <span
+                            className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-bold ${
+                              isResolved
+                                ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                : isReviewed
+                                ? "bg-sky-50 text-sky-700 border border-sky-200"
+                                : "bg-amber-50 text-amber-700 border border-amber-200"
+                            }`}
+                          >
+                            {isResolved ? (
+                              <Check size={12} />
+                            ) : isReviewed ? (
+                              <Eye size={12} />
+                            ) : (
+                              <Clock3 size={12} />
+                            )}
+                            {item.status}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="mt-3">
+                        <h5 className="text-sm font-bold text-slate-900">
+                          {item.subject}
+                        </h5>
+                        <p className="mt-1 text-xs sm:text-sm text-slate-700 whitespace-pre-line leading-relaxed">
+                          {item.message}
+                        </p>
+                        <div className="mt-2 text-[11px] text-slate-400">
+                          Submitted on {formatDate(item.createdAt)}
+                        </div>
+                      </div>
+
+                      {item.adminReply && (
+                        <div className="mt-3.5 rounded-xl border border-emerald-200 bg-emerald-50/60 p-3.5">
+                          <div className="flex items-center justify-between text-xs font-bold text-emerald-900 mb-1">
+                            <span className="flex items-center gap-1.5">
+                              <CheckCircle2 size={14} className="text-emerald-600" />
+                              Current Admin Response:
+                            </span>
+                            <span className="text-[10px] font-normal text-emerald-700">
+                              Replied: {formatDate(item.repliedAt)}
+                            </span>
+                          </div>
+                          <p className="text-xs sm:text-sm text-emerald-950 whitespace-pre-line">
+                            {item.adminReply}
+                          </p>
+                        </div>
+                      )}
+
+                      <div className="mt-4 border-t border-slate-100 pt-3">
+                        <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">
+                          {item.adminReply ? "Edit Response to Student:" : "Write Response to Student:"}
+                        </label>
+                        <textarea
+                          rows={2}
+                          value={replyDraft}
+                          onChange={(e) =>
+                            setFeedbackReplyInputs((prev) => ({
+                              ...prev,
+                              [item._id]: e.target.value,
+                            }))
+                          }
+                          placeholder="Type an answer or resolution note to the student..."
+                          className="w-full rounded-xl border border-slate-200 p-2.5 text-xs text-slate-800 placeholder-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100 resize-y"
+                        />
+
+                        <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() =>
+                                handleUpdateFeedback(
+                                  item._id,
+                                  item.status === "Pending" ? "Reviewed" : item.status,
+                                  replyDraft
+                                )
+                              }
+                              disabled={feedbackBusy === item._id || !replyDraft || !replyDraft.trim()}
+                              className="flex items-center gap-1 rounded-lg bg-indigo-600 px-3.5 py-1.5 text-xs font-bold text-white hover:bg-indigo-700 transition shadow-xs disabled:opacity-50 cursor-pointer"
+                            >
+                              {feedbackBusy === item._id ? (
+                                <Loader2 size={12} className="animate-spin" />
+                              ) : (
+                                <Send size={12} />
+                              )}
+                              Send Reply
+                            </button>
+                          </div>
+
+                          <div className="flex items-center gap-2 ml-auto">
+                            {!isReviewed && !isResolved && (
+                              <button
+                                onClick={() => handleUpdateFeedback(item._id, "Reviewed", replyDraft || undefined)}
+                                disabled={feedbackBusy === item._id}
+                                className="flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-100 transition disabled:opacity-60 cursor-pointer"
+                              >
+                                {feedbackBusy === item._id ? (
+                                  <Loader2 size={12} className="animate-spin" />
+                                ) : (
+                                  <Eye size={12} />
+                                )}
+                                Mark as Reviewed
+                              </button>
+                            )}
+
+                            {!isResolved ? (
+                              <button
+                                onClick={() =>
+                                  handleUpdateFeedback(
+                                    item._id,
+                                    "Resolved",
+                                    replyDraft || undefined
+                                  )
+                                }
+                                disabled={feedbackBusy === item._id}
+                                className="flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-700 transition shadow-xs disabled:opacity-60 cursor-pointer"
+                              >
+                                {feedbackBusy === item._id ? (
+                                  <Loader2 size={12} className="animate-spin" />
+                                ) : (
+                                  <Check size={12} />
+                                )}
+                                Mark as Resolved
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => handleUpdateFeedback(item._id, "Pending")}
+                                disabled={feedbackBusy === item._id}
+                                className="flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-100 transition disabled:opacity-60 cursor-pointer"
+                              >
+                                {feedbackBusy === item._id ? (
+                                  <Loader2 size={12} className="animate-spin" />
+                                ) : (
+                                  <Clock3 size={12} />
+                                )}
+                                Reopen Message
+                              </button>
+                            )}
+
+                            <button
+                              onClick={() => handleDeleteFeedback(item._id)}
+                              disabled={feedbackBusy === item._id}
+                              className="flex items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-bold text-rose-600 hover:bg-rose-100 transition disabled:opacity-60 cursor-pointer"
+                              title="Delete message"
+                            >
+                              {feedbackBusy === item._id ? (
+                                <Loader2 size={12} className="animate-spin" />
+                              ) : (
+                                <Trash2 size={12} />
+                              )}
+                              Delete
+                            </button>
+                          </div>
+                        </div>
                       </div>
                     </div>
                   );
