@@ -26,6 +26,8 @@ const TOAST_META = {
   CHAT_MESSAGE: { title: "Direct Message Alert", tone: "info" },
   SAFETY_REPORT_SUBMITTED: { title: "Safety Concern Submitted", tone: "warn" },
   SAFETY_REPORT_STATUS_UPDATED: { title: "Safety Concern Updated", tone: "success" },
+  FEEDBACK_SUBMITTED: { title: "Message Submitted", tone: "info" },
+  FEEDBACK_STATUS_UPDATED: { title: "Admin Response Alert", tone: "success" },
 };
 
 const getDeletedIds = () => {
@@ -99,15 +101,22 @@ const buildToast = (event) => {
     case "SAFETY_REPORT_STATUS_UPDATED":
       body = event.message || `Your safety concern report has been updated to "${event.status || 'Resolved'}" by administrators.`;
       break;
+    case "FEEDBACK_SUBMITTED":
+      body = event.message || "Your message has been sent to campus administration.";
+      break;
+    case "FEEDBACK_STATUS_UPDATED":
+      body = event.message || `Admin updated your inquiry status to "${event.status || 'Reviewed'}".`;
+      break;
     default:
       return null;
   }
   return {
-    id: `${event.type}-${event.paymentId || event.messageId || event.rideId || Date.now()}`,
+    id: `${event.type}-${event.feedbackId || event.paymentId || event.messageId || event.rideId || Date.now()}`,
     title: event.type === "CHAT_MESSAGE" ? `Message from ${event.actorName || "Student"}` : meta.title,
     body,
     tone: meta.tone,
     type: event.type,
+    feedbackId: event.feedbackId,
     paymentId: event.paymentId,
     rideId: event.rideId,
     senderId: event.senderId,

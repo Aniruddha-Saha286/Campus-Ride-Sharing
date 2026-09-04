@@ -19,7 +19,8 @@
     "test:history": "node scripts/tests/07_ride_history.test.js",
     "test:chat": "node scripts/tests/08_chat.test.js",
     "test:ride-payments": "node scripts/tests/09_ride_payment_smoke.test.js",
-    "test:safety": "node scripts/tests/10_safety_reports_smoke.test.js"
+    "test:safety": "node scripts/tests/10_safety_reports_smoke.test.js",
+    "test:feedback": "node scripts/tests/11_user_feedback_smoke.test.js"
   },
   "dependencies": {
     "cors": "^2.8.5",

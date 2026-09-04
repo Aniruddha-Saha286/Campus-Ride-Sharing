@@ -33,12 +33,19 @@ const streamEvents = async (req, res) => {
   }
 
   const idsToSubscribe = [];
-  if (user.id) idsToSubscribe.push(user.id);
-  if (user._id) idsToSubscribe.push(user._id);
-  if (user.userId) idsToSubscribe.push(user.userId);
-  if (user.sub) idsToSubscribe.push(user.sub);
-  if (email) idsToSubscribe.push(email);
-  if (student && student._id) idsToSubscribe.push(student._id);
+  if (user.id) idsToSubscribe.push(String(user.id));
+  if (user._id) idsToSubscribe.push(String(user._id));
+  if (user.userId) idsToSubscribe.push(String(user.userId));
+  if (user.sub) idsToSubscribe.push(String(user.sub));
+  if (email) {
+    idsToSubscribe.push(email);
+    idsToSubscribe.push(email.toLowerCase());
+  }
+  if (student && student._id) idsToSubscribe.push(String(student._id));
+  if (student && student.universityEmail) {
+    idsToSubscribe.push(student.universityEmail);
+    idsToSubscribe.push(student.universityEmail.toLowerCase());
+  }
 
   if (idsToSubscribe.length === 0) {
     return res.status(401).json({ success: false, message: "Not authorized, token contains no user identification" });
@@ -181,8 +188,34 @@ const listNotifications = asyncHandler(async (req, res) => {
     console.error("Failed to load payment notifications:", err);
   }
 
-  // Combine and sort by createdAt descending
-  const combined = [...chatNotifs, ...paymentNotifs].sort(
+  let feedbackNotifs = [];
+  try {
+    const UserFeedback = require("../models/UserFeedback");
+    const feedbackList = await UserFeedback.find({
+      user: me._id,
+      adminReply: { $exists: true, $ne: "" },
+    })
+      .sort({ repliedAt: -1, updatedAt: -1 })
+      .limit(10)
+      .lean();
+
+    feedbackNotifs = feedbackList
+      .filter((f) => !clearedSet.has(`FEEDBACK_STATUS_UPDATED-${f._id}`))
+      .map((f) => ({
+        id: `FEEDBACK_STATUS_UPDATED-${f._id}`,
+        type: "FEEDBACK_STATUS_UPDATED",
+        title: "Admin Response Alert",
+        body: `Admin replied to your ${f.type}: "${f.adminReply?.length > 70 ? f.adminReply.slice(0, 67) + '...' : f.adminReply}"`,
+        tone: "success",
+        feedbackId: f._id,
+        createdAt: f.repliedAt || f.updatedAt || f.createdAt,
+        read: f.status === "Resolved",
+      }));
+  } catch (err) {
+    console.error("Failed to load feedback notifications:", err);
+  }
+
+  const combined = [...chatNotifs, ...paymentNotifs, ...feedbackNotifs].sort(
     (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
   );
 

@@ -30,6 +30,7 @@ import FindRidePage from "./components/FindRidePage.jsx";
 import MyRidesPage from "./components/MyRidesPage.jsx";
 import RecurringPage from "./components/RecurringPage.jsx";
 import MySafetyReports from "./components/MySafetyReports.jsx";
+import ContactAdmin from "./components/ContactAdmin.jsx";
 import { AuthContext } from "./auth.js";
 import { NotificationProvider } from "./notifications.jsx";
 
@@ -261,6 +262,10 @@ const router = createBrowserRouter([
       {
         path: "/safety-reports",
         element: <Navigate to="/my-safety-reports" replace />,
+      },
+      {
+        path: "/contact-admin",
+        element: <ContactAdmin />,
       },
     ],
   },
