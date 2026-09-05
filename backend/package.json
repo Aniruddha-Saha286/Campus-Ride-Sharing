@@ -20,7 +20,9 @@
     "test:chat": "node scripts/tests/08_chat.test.js",
     "test:ride-payments": "node scripts/tests/09_ride_payment_smoke.test.js",
     "test:safety": "node scripts/tests/10_safety_reports_smoke.test.js",
-    "test:feedback": "node scripts/tests/11_user_feedback_smoke.test.js"
+    "test:feedback": "node scripts/tests/11_user_feedback_smoke.test.js",
+    "test:auto-split": "node scripts/tests/12_auto_cost_split.test.js",
+    "test:adjustable-split": "node scripts/tests/13_adjustable_cost_split.test.js"
   },
   "dependencies": {
     "cors": "^2.8.5",

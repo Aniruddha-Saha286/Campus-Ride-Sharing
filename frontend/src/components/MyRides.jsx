@@ -49,6 +49,7 @@ import BkashQrPaymentModal from "./BkashQrPaymentModal.jsx";
 import DriverCancelRefundModal from "./DriverCancelRefundModal.jsx";
 import DriverProcessRefundModal from "./DriverProcessRefundModal.jsx";
 import ReportSafetyModal from "./ReportSafetyModal.jsx";
+import AutoCostSplitModal, { AutoCostSplitBadge } from "./AutoCostSplit.jsx";
 import { getMySafetyReports } from "../api/safetyReportApi";
 import usePolling from "../hooks/usePolling";
 import { formatTime12Hour } from "../utils/rideStatusConstants";
@@ -120,8 +121,8 @@ function RideDetailPanel({ ride }) {
           <p className="text-sm font-semibold text-slate-700">{ride.seatsLeft ?? "—"}</p>
         </div>
         <div>
-          <p className="mb-0.5 text-[10px] font-bold uppercase tracking-widest text-slate-400">Fare / seat</p>
-          <p className="text-sm font-semibold text-slate-700">{ride.charge > 0 ? formatTaka(ride.charge) : "Free"}</p>
+          <p className="mb-0.5 text-[10px] font-bold uppercase tracking-widest text-slate-400">Total Fare</p>
+          <p className="text-sm font-bold text-slate-800">{ride.charge > 0 ? `${formatTaka(ride.charge)} (split)` : "Free"}</p>
         </div>
         <div>
           <p className="mb-0.5 text-[10px] font-bold uppercase tracking-widest text-slate-400">Departure</p>
@@ -202,6 +203,7 @@ export default function MyRides() {
   const [paymentBusy, setPaymentBusy] = useState(false);
   const [seatEditTarget, setSeatEditTarget] = useState(null);
   const [selectedSeats, setSelectedSeats] = useState(1);
+  const [costSplitRideId, setCostSplitRideId] = useState(null);
   const navigate = useNavigate();
 
   const handleSaveSeats = async () => {
@@ -520,7 +522,7 @@ export default function MyRides() {
                           <p className="mt-2 text-xs text-slate-400">
                             {ride.seatsLeft} of {ride.seats} seats left
                             {ride.charge > 0 && (
-                              <span className="ml-2 font-semibold text-slate-600">· {formatTaka(ride.charge)} / seat</span>
+                              <span className="ml-2 font-semibold text-slate-700">· Total Trip Fare: {formatTaka(ride.charge)} (split)</span>
                             )}
                             {ride.charge === 0 && (
                               <span className="ml-2 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700">Free</span>
@@ -528,6 +530,7 @@ export default function MyRides() {
                           </p>
                         </div>
                         <div className="flex flex-wrap items-center gap-2">
+                          <AutoCostSplitBadge ride={ride} onOpen={(id) => setCostSplitRideId(id)} />
                           <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
                             {ride.requests.length} request{ride.requests.length === 1 ? "" : "s"}
                           </span>
@@ -822,6 +825,17 @@ export default function MyRides() {
                     payment?.status === "REFUND_REQUESTED" &&
                     !isDriverRefundAwaitingPassenger;
 
+                  const confirmedRidersCount =
+                    (ride?.requests || []).filter((r) => r.status === "accepted").length || 1;
+                  const dynamicEqualShare =
+                    confirmedRidersCount > 0
+                      ? Math.round(((ride?.charge || 0) / confirmedRidersCount) * 100) / 100
+                      : (ride?.charge || 0);
+                  const payableShare =
+                    payment?.totalOutstanding ||
+                    payment?.originalAmount ||
+                    dynamicEqualShare;
+
                   return (
                     <div key={req._id} className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-card">
                       <div className="p-5">
@@ -830,8 +844,13 @@ export default function MyRides() {
                             {avatar(ride?.poster)}
                             <div>
                               {nameLine(ride?.poster)}
-                              <p className="mt-1 text-xs text-slate-400 flex items-center gap-2">
+                              <p className="mt-1 text-xs text-slate-400 flex flex-wrap items-center gap-2">
                                 <span>{rideLinePills(ride)}</span>
+                                {req.status === "accepted" && ride.charge > 0 && (
+                                  <span className="rounded-md bg-blue-50 border border-blue-200/80 px-2 py-0.5 text-[11px] font-bold text-blue-700">
+                                    Your Share: {formatTaka(payableShare)} ({confirmedRidersCount} confirmed rider{confirmedRidersCount === 1 ? "" : "s"})
+                                  </span>
+                                )}
                                 {ride.status === "open" &&
                                   (req.status === "pending" || req.status === "accepted") &&
                                   payment?.status !== "REFUND_REQUESTED" &&
@@ -861,6 +880,7 @@ export default function MyRides() {
                             </div>
                           </div>
                           <div className="flex flex-wrap items-center gap-2">
+                            <AutoCostSplitBadge ride={ride} onOpen={(id) => setCostSplitRideId(id)} />
                             <span className={`rounded-full px-3 py-1 text-xs font-semibold border ${meta.classes}`}>
                               {meta.label}
                             </span>
@@ -1004,7 +1024,7 @@ export default function MyRides() {
                                         className="flex items-center gap-1.5 rounded-lg bg-[#d12053] px-3 py-1.5 text-xs font-bold text-white shadow-xs transition hover:bg-[#b01742] animate-pulse cursor-pointer"
                                       >
                                         <Wallet size={13} />
-                                        Pay Fee ({formatTaka((ride.charge || 0) * (req.seats || 1))})
+                                        Pay Share ({formatTaka(payableShare)})
                                       </button>
                                     )}
                                   </>
@@ -1085,7 +1105,7 @@ export default function MyRides() {
                             payment.remainingAmount > 0 &&
                             payment.status !== "REFUND_REQUESTED" &&
                             payment.status !== "REFUNDED";
-                          const baseAmount = hasExtraPending ? payment.amountPaid : (payment.totalOutstanding || payment.originalAmount);
+                          const baseAmount = hasExtraPending ? payment.amountPaid : (payment.totalOutstanding || payment.originalAmount || payableShare);
 
                           return (
                             <div className="mt-3 space-y-2">
@@ -1094,15 +1114,20 @@ export default function MyRides() {
                                 <div className="flex flex-wrap items-center gap-2">
                                   <Wallet size={14} className="text-brand-500" />
                                   <span className="text-xs font-bold text-slate-800">
-                                    Fare: {formatTaka(baseAmount)}
+                                    Your Share: {formatTaka(baseAmount)}
                                   </span>
+                                  {confirmedRidersCount > 0 && ride.charge > 0 && (
+                                    <span className="rounded-md bg-blue-50 border border-blue-200/80 px-2 py-0.5 text-[10px] font-bold text-blue-700">
+                                      ৳{ride.charge} total ÷ {confirmedRidersCount} rider{confirmedRidersCount === 1 ? "" : "s"}
+                                    </span>
+                                  )}
                                   {payment.status === "PAID" || (req.paymentStatus === "SETTLED" && !hasExtraPending) ? (
                                     <span className="rounded-full bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 text-[10px] font-extrabold text-emerald-700">
                                       Paid
                                     </span>
                                   ) : hasExtraPending ? (
                                     <span className="rounded-full bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 text-[10px] font-extrabold text-emerald-700">
-                                      Paid ({Math.round(payment.amountPaid / (ride.charge || 1))} seats)
+                                      Paid ({formatTaka(payment.amountPaid)})
                                     </span>
                                   ) : payment.status === "REFUND_REQUESTED" ? (
                                     <span className="rounded-full bg-violet-50 border border-violet-200 px-2.5 py-0.5 text-[10px] font-bold text-violet-700">
@@ -1203,13 +1228,32 @@ export default function MyRides() {
       )}
 
       {my && my.posted.length === 0 && my.requested.length === 0 && (
-        <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-white px-6 py-12 text-center shadow-card">
+        <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-white px-6 py-12 text-center shadow-card space-y-4">
           <Inbox size={26} className="text-slate-300" />
-          <p className="mt-3 text-sm font-medium text-slate-500">No rides yet</p>
-          <p className="mt-1 text-xs text-slate-400">
-            Post a ride to share your commute, or use <strong>Find Ride</strong> to join one.
-          </p>
+          <div>
+            <p className="text-sm font-medium text-slate-500">No rides yet</p>
+            <p className="mt-1 text-xs text-slate-400">
+              Post a ride to share your commute, or use <strong>Find Ride</strong> to join one.
+            </p>
+          </div>
+          <div className="max-w-md rounded-xl border border-blue-100 bg-blue-50/60 p-3.5 text-xs text-blue-800 text-left flex items-start gap-2.5">
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-blue-600 text-white text-[10px] font-bold">✨</span>
+            <div>
+              <p className="font-bold text-blue-900">Auto Cost Split Feature Active</p>
+              <p className="mt-0.5 text-blue-700/90 leading-relaxed text-[11px]">
+                The total trip cost is automatically divided equally among all confirmed riders by default. When you offer or join a ride, your cost drops as more students join!
+              </p>
+            </div>
+          </div>
         </div>
+      )}
+
+      {costSplitRideId && (
+        <AutoCostSplitModal
+          rideId={costSplitRideId}
+          onClose={() => setCostSplitRideId(null)}
+          onUpdated={load}
+        />
       )}
 
       {contact && <AcceptedContactModal contact={contact} onClose={() => setContact(null)} />}

@@ -361,15 +361,18 @@ export default function NewRide() {
                   </div>
                 </div>
 
-                {/* Fare per seat */}
+                {/* Total Trip Fare */}
                 <div>
-                  <label className="mb-1.5 flex items-center justify-between text-xs font-bold uppercase tracking-wide text-slate-600">
+                  <label className="mb-1 flex items-center justify-between text-xs font-bold uppercase tracking-wide text-slate-600">
                     <span className="flex items-center gap-1.5">
                       <Wallet size={14} className="text-blue-600" />
-                      Fare per Seat (BDT)
+                      Total Trip Fare (BDT)
                     </span>
                     <span className="text-[11px] font-semibold text-slate-400">0 = Free Ride</span>
                   </label>
+                  <p className="mb-2 text-[11px] text-slate-400">
+                    Total trip cost to be automatically divided equally among confirmed riders.
+                  </p>
 
                   <div className="relative">
                     <span className="pointer-events-none absolute left-3.5 top-2.5 font-bold text-slate-400">৳</span>
@@ -383,6 +386,15 @@ export default function NewRide() {
                       className="w-full rounded-xl border border-slate-200 py-2.5 pl-8 pr-3 text-sm font-bold text-slate-800 shadow-xs outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
                     />
                   </div>
+
+                  {Number(charge) > 0 && Number(seats) > 0 && (
+                    <div className="mt-2 rounded-lg bg-blue-50/70 border border-blue-100/80 px-2.5 py-1.5 text-[11px] text-blue-700 flex items-center justify-between">
+                      <span>Auto-split: <strong>৳{charge}</strong> total</span>
+                      <span>
+                        ৳{Math.round((Number(charge) / Number(seats)) * 100) / 100} / person ({seats} riders)
+                      </span>
+                    </div>
+                  )}
 
                   {/* Fare Preset Chips */}
                   <div className="mt-2 flex flex-wrap gap-1.5">
