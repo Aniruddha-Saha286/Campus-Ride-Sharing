@@ -16,7 +16,7 @@ const recurringRideSchema = new mongoose.Schema(
       required: true,
       match: [TIME_REGEX, "Departure time must be in HH:MM (24-hour) format"],
     },
-    seats: { type: Number, required: true, min: 1, max: 6 },
+    seats: { type: Number, required: true, min: 1, max: 8 },
     notes: { type: String, default: "", trim: true, maxlength: 1000 },
     status: { type: String, enum: ["active", "disabled"], default: "active" },
     generatedForDate: { type: Date, default: null },
