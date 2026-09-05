@@ -174,17 +174,10 @@ function RideCard({ ride, onRequest, busy, onOpenPayment, onOpenCancel, onConfir
               {ride.charge > 0 && (
                 <span className="flex items-center gap-1.5 text-xs text-slate-500">
                   <Wallet size={13} className="text-brand-400" />
-                  <span className="font-semibold text-slate-700">{formatTaka(ride.charge)}</span> / seat
-                  {!myBooking && seats > 1 && (
-                    <span className="font-bold text-brand-600 ml-1">
-                      (Total: {formatTaka(ride.charge * seats)})
-                    </span>
-                  )}
-                  {myBooking && myBooking.seats > 1 && (
-                    <span className="font-bold text-brand-600 ml-1">
-                      ({myBooking.seats} seats · Total: {formatTaka(ride.charge * myBooking.seats)})
-                    </span>
-                  )}
+                  <span className="font-bold text-slate-800">{formatTaka(ride.charge)} total</span>
+                  <span className="rounded-md bg-blue-50 px-1.5 py-0.5 text-[11px] font-semibold text-blue-700">
+                    {formatTaka(Math.round(ride.charge / (ride.seats || 4)))} – {formatTaka(ride.charge)} / person
+                  </span>
                 </span>
               )}
               {ride.charge === 0 && (
@@ -420,9 +413,9 @@ function RideCard({ ride, onRequest, busy, onOpenPayment, onOpenCancel, onConfir
               <p className="text-sm font-semibold text-slate-700">{ride.seatsLeft}</p>
             </div>
             <div>
-              <p className="mb-0.5 text-[10px] font-bold uppercase tracking-widest text-slate-400">Fare / seat</p>
-              <p className="text-sm font-semibold text-slate-700">
-                {ride.charge > 0 ? formatTaka(ride.charge) : "Free"}
+              <p className="mb-0.5 text-[10px] font-bold uppercase tracking-widest text-slate-400">Total Fare</p>
+              <p className="text-sm font-bold text-slate-800">
+                {ride.charge > 0 ? `${formatTaka(ride.charge)} (split)` : "Free"}
               </p>
             </div>
             <div>

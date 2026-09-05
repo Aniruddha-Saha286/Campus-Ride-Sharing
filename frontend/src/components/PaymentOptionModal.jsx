@@ -39,11 +39,17 @@ export default function PaymentOptionModal({
   if (!isOpen || !ride) return null;
 
   const seats = booking?.seats || 1;
-  const farePerSeat = ride?.chargePerSeat || ride?.charge || 0;
+  const confirmedCount =
+    (ride?.requests || []).filter((r) => r.status === "accepted").length || 1;
+  const splitShare =
+    confirmedCount > 0
+      ? Math.round(((ride?.charge || 0) / confirmedCount) * 100) / 100
+      : (ride?.charge || 0);
+
   const totalFare =
     booking?.payment?.totalOutstanding ||
     booking?.payment?.originalAmount ||
-    farePerSeat * seats;
+    splitShare;
 
   const driver = ride.poster;
   const rawDriverPhone = driver?.phone || "017XXXXXXXX";
