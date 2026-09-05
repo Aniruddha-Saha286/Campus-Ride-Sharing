@@ -19,6 +19,8 @@ const chatRoutes = require("./routes/chatRoutes");
 const ratingRoutes = require("./routes/ratingRoutes");
 const safetyReportRoutes = require("./routes/safetyReportRoutes");
 const userFeedbackRoutes = require("./routes/userFeedbackRoutes");
+const autoCostSplitRoutes = require("./routes/autoCostSplitRoutes");
+const adjustableCostSplitRoutes = require("./routes/adjustableCostSplitRoutes");
 const { startRecurringJob } = require("./utils/recurringJob");
 
 const app = express();
@@ -43,6 +45,8 @@ app.use("/api/chat", chatRoutes);
 app.use("/api/ratings", ratingRoutes);
 app.use("/api/safety-reports", safetyReportRoutes);
 app.use("/api/feedback", userFeedbackRoutes);
+app.use("/api/auto-cost-split", autoCostSplitRoutes);
+app.use("/api/adjustable-cost-split", adjustableCostSplitRoutes);
 
 app.get("/", (req, res) => {
   res.json({ message: "Campus Ride Sharing API" });

@@ -334,7 +334,7 @@ export default function EditRideModal({ ride, onClose, onSuccess }) {
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
-                  <Wallet size={13} className="text-emerald-500" /> Fare per Seat
+                  <Wallet size={13} className="text-emerald-500" /> Total Trip Fare (BDT)
                 </h3>
                 {acceptedCount > 0 && (
                   <span className="flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 shadow-xs">
@@ -342,6 +342,9 @@ export default function EditRideModal({ ride, onClose, onSuccess }) {
                   </span>
                 )}
               </div>
+              <p className="text-[11px] text-slate-400">
+                Total trip cost to be automatically divided equally among confirmed riders.
+              </p>
 
               {acceptedCount > 0 ? (
                 <div className="rounded-2xl border border-emerald-100 bg-emerald-50/50 p-3.5 flex items-center justify-between">
@@ -350,9 +353,9 @@ export default function EditRideModal({ ride, onClose, onSuccess }) {
                       <Wallet size={16} />
                     </div>
                     <div>
-                      <p className="text-[10px] font-bold uppercase text-slate-400">Fixed Fare</p>
+                      <p className="text-[10px] font-bold uppercase text-slate-400">Total Trip Fare</p>
                       <p className="text-xs font-bold text-slate-800 mt-0.5">
-                        {Number(charge) > 0 ? `৳${charge} per seat` : "Free"}
+                        {Number(charge) > 0 ? `৳${charge} total` : "Free"}
                       </p>
                     </div>
                   </div>

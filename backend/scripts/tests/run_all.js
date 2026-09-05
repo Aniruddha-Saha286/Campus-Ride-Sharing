@@ -13,6 +13,10 @@ const TEST_FILES = [
   "09_ride_payment_smoke.test.js",
   "10_safety_reports_smoke.test.js",
   "11_user_feedback_smoke.test.js",
+  "12_auto_cost_split.test.js",
+  "13_adjustable_cost_split.test.js",
+  "14_features_integration.test.js",
+  "15_dynamic_fare_payment_sync.test.js",
 ];
 
 const runTest = (file) =>
