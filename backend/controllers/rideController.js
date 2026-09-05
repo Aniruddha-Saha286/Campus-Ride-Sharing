@@ -3,6 +3,7 @@ const Ride = require("../models/Ride");
 const Booking = require("../models/Booking");
 const RidePayment = require("../models/RidePayment");
 const RideStatus = require("../models/RideStatus");
+const VehicleRide = require("../models/VehicleRide");
 const asyncHandler = require("../utils/asyncHandler");
 const {
   findMe,
@@ -18,13 +19,13 @@ const {
   computeCancellationFine,
   computePassengerCancelFine,
 } = require("../utils/ridePaymentHelper");
-const { notifyUser } = require("../utils/notifier");
+const { notifyUser, createNotification } = require("../utils/notifier");
+const { syncRidePaymentsWithCostSplit } = require("../utils/splitPaymentSync");
+const { isInsideDhakaCoverage } = require("../utils/dhakaCoverage");
+const { validateRegistrationPlate } = require("../utils/vehicleRegistration");
 
 const { TIME_REGEX } = Ride;
 
-/**
- * Create a new ride offer.
- */
 const createRide = asyncHandler(async (req, res) => {
   const me = await findMe(req);
   if (!me) return res.status(404).json({ success: false, message: "Profile not found" });
@@ -37,12 +38,24 @@ const createRide = asyncHandler(async (req, res) => {
   if (!dropoff || !String(dropoff).trim()) {
     return res.status(400).json({ success: false, message: "Drop-off location is required" });
   }
+
+  if (pickupLat != null || pickupLng != null) {
+    if (!isInsideDhakaCoverage(pickupLat, pickupLng)) {
+      return res.status(400).json({ success: false, message: "Pickup and destination must be within the Campus Ride service area (Dhaka, Gazipur and Narayanganj)." });
+    }
+  }
+  if (dropoffLat != null || dropoffLng != null) {
+    if (!isInsideDhakaCoverage(dropoffLat, dropoffLng)) {
+      return res.status(400).json({ success: false, message: "Pickup and destination must be within the Campus Ride service area (Dhaka, Gazipur and Narayanganj)." });
+    }
+  }
+
   if (!departureTime || !TIME_REGEX.test(departureTime)) {
     return res.status(400).json({ success: false, message: "Departure time must be in HH:MM (24-hour) format" });
   }
   const seatCount = Number(seats);
-  if (!Number.isInteger(seatCount) || seatCount < 1 || seatCount > 6) {
-    return res.status(400).json({ success: false, message: "Seats must be a whole number between 1 and 6" });
+  if (!Number.isInteger(seatCount) || seatCount < 1 || seatCount > 8) {
+    return res.status(400).json({ success: false, message: "Seats must be a whole number between 1 and 8" });
   }
 
   let chargeValue = 0;
@@ -52,6 +65,28 @@ const createRide = asyncHandler(async (req, res) => {
       return res.status(400).json({ success: false, message: "Ride charge must be a non-negative number" });
     }
     chargeValue = roundMoney(chargeValue);
+  }
+
+  const activeBookingInfo = await findActiveBookingForRider(me._id);
+  if (activeBookingInfo) {
+    if (activeBookingInfo.isDriver) {
+      return res.status(400).json({
+        success: false,
+        message: `You already have an active posted ride from ${activeBookingInfo.ride.pickup} to ${activeBookingInfo.ride.dropoff}. You cannot post more than 1 ride until your current ride is cancelled or ended.`,
+      });
+    }
+    if (activeBookingInfo.booking?.status === "accepted") {
+      return res.status(400).json({
+        success: false,
+        message: `You already have an active booked ride from ${activeBookingInfo.ride.pickup} to ${activeBookingInfo.ride.dropoff}. You cannot post a ride until your current ride is completed.`,
+      });
+    }
+    if (activeBookingInfo.booking?.status === "pending") {
+      return res.status(400).json({
+        success: false,
+        message: `You already have a pending seat request for a ride from ${activeBookingInfo.ride.pickup} to ${activeBookingInfo.ride.dropoff}. Please cancel that request before posting a ride.`,
+      });
+    }
   }
 
   const ride = await Ride.create({
@@ -71,9 +106,56 @@ const createRide = asyncHandler(async (req, res) => {
   res.status(201).json({ success: true, data: ride });
 });
 
-/**
- * List open rides with seat calculations and driver rating averages.
- */
+const pendingSeatRequests = new Set();
+
+const findActiveBookingForRider = async (riderId) => {
+  const activePostedRide = await Ride.findOne({
+    poster: riderId,
+    status: { $in: ["open", "pending_cancellation"] },
+  });
+  if (activePostedRide) {
+    const statusDoc = await RideStatus.findOne({ ride: activePostedRide._id }).select("tripStatus");
+    const tripStatus = statusDoc?.tripStatus || "upcoming";
+    if (tripStatus !== "completed") {
+      return {
+        booking: { status: "accepted" },
+        ride: activePostedRide,
+        tripStatus,
+        isDriver: true,
+      };
+    }
+  }
+
+  const bookings = await Booking.find({
+    rider: riderId,
+    status: { $in: ["accepted", "pending"] },
+  }).populate("ride");
+
+  if (!bookings || bookings.length === 0) return null;
+
+  bookings.sort((a, b) => (a.status === "accepted" ? -1 : 1));
+
+  const rideIds = bookings.map((b) => b.ride?._id).filter(Boolean);
+  const statuses = await RideStatus.find({ ride: { $in: rideIds } }).select("ride tripStatus");
+  const tripStatusMap = new Map(statuses.map((s) => [String(s.ride), s.tripStatus]));
+
+  for (const b of bookings) {
+    if (!b.ride) continue;
+    if (b.ride.status === "cancelled" || b.ride.status === "completed") continue;
+    const tripStatus = tripStatusMap.get(String(b.ride._id)) || "upcoming";
+    if (tripStatus === "completed") continue;
+
+    return {
+      booking: b,
+      ride: b.ride,
+      tripStatus,
+      isDriver: false,
+    };
+  }
+
+  return null;
+};
+
 const listRides = asyncHandler(async (req, res) => {
   const me = await findMe(req);
   if (!me) return res.status(404).json({ success: false, message: "Profile not found" });
@@ -84,19 +166,17 @@ const listRides = asyncHandler(async (req, res) => {
 
   const counts = await Booking.aggregate([
     { $match: { ride: { $in: rides.map((r) => r._id) }, status: "accepted" } },
-    { $group: { _id: "$ride", count: { $sum: "$seats" } } },
+    { $group: { _id: "$ride", count: { $sum: "$seats" }, riders: { $sum: 1 } } },
   ]);
   const bookedByRide = new Map(counts.map((c) => [String(c._id), c.count]));
+  const ridersByRide = new Map(counts.map((c) => [String(c._id), c.riders]));
 
-  // Get driver ratings
   const posterIds = rides.map((r) => r.poster?._id).filter(Boolean);
   const ratingMap = await getRatingsForDrivers(posterIds);
 
-  // Get trip status for rides (to check if driver started the ride)
   const statuses = await RideStatus.find({ ride: { $in: rides.map((r) => r._id) } }).select("ride tripStatus");
   const tripStatusMap = new Map(statuses.map((s) => [String(s.ride), s.tripStatus]));
 
-  // Get current user's bookings and payments for these rides
   const myBookings = await Booking.find({
     rider: me._id,
     ride: { $in: rides.map((r) => r._id) },
@@ -112,11 +192,16 @@ const listRides = asyncHandler(async (req, res) => {
   }
   const myPaymentMap = new Map(myPayments.map((p) => [String(p.ride), p]));
 
+  const vrList = await VehicleRide.find({ ride: { $in: rides.map((r) => r._id) } });
+  const vrMap = new Map(vrList.map((vr) => [String(vr.ride), vr]));
+
   const data = rides
     .filter((r) => r.poster && String(r.poster._id) !== String(me._id))
     .map((r) => {
       const booked = bookedByRide.get(String(r._id)) || 0;
-      const seatsLeft = Math.max(0, r.seats - booked);
+      const vr = vrMap.get(String(r._id));
+      const totalSeats = vr?.allocatedSeats || r.seats;
+      const seatsLeft = Math.max(0, totalSeats - booked);
       const posterRating = ratingMap.get(String(r.poster._id)) || null;
       const myBooking = myBookingMap.get(String(r._id));
       const myPayment = myPaymentMap.get(String(r._id));
@@ -131,8 +216,9 @@ const listRides = asyncHandler(async (req, res) => {
         dropoffLat: r.dropoffLat,
         dropoffLng: r.dropoffLng,
         departureTime: r.departureTime,
-        seats: r.seats,
+        seats: totalSeats,
         seatsLeft,
+        confirmedRidersCount: ridersByRide.get(String(r._id)) || 0,
         tripStatus,
         charge: r.charge || 0,
         chargePerSeat: r.charge ? seatCharge(r.charge) : 0,
@@ -158,6 +244,7 @@ const listRides = asyncHandler(async (req, res) => {
                     finalized: myPayment.finalized,
                     originalAmount: myPayment.originalAmount,
                     amountPaid: myPayment.amountPaid,
+                    remainingAmount: myPayment.remainingAmount,
                     lateFee: myPayment.lateFee,
                     totalOutstanding: myPayment.totalOutstanding,
                     refundRequestedBy: myPayment.refundRequestedBy,
@@ -175,12 +262,25 @@ const listRides = asyncHandler(async (req, res) => {
     })
     .filter((r) => ((r.tripStatus === "upcoming" || !r.tripStatus) && r.seatsLeft > 0) || r.myBooking != null);
 
-  res.json({ success: true, data });
+  const activeBookingInfo = await findActiveBookingForRider(me._id);
+
+  res.json({
+    success: true,
+    data,
+    activeBooking: activeBookingInfo
+      ? {
+          rideId: activeBookingInfo.ride._id,
+          pickup: activeBookingInfo.ride.pickup,
+          dropoff: activeBookingInfo.ride.dropoff,
+          departureTime: activeBookingInfo.ride.departureTime,
+          status: activeBookingInfo.booking.status,
+          tripStatus: activeBookingInfo.tripStatus,
+          isDriver: Boolean(activeBookingInfo.isDriver),
+        }
+      : null,
+  });
 });
 
-/**
- * Get posted and requested rides for the current user.
- */
 const getMyRides = asyncHandler(async (req, res) => {
   const me = await findMe(req);
   if (!me) return res.status(404).json({ success: false, message: "Profile not found" });
@@ -214,11 +314,21 @@ const getMyRides = asyncHandler(async (req, res) => {
   const postedStatuses = await RideStatus.find({ ride: { $in: postedRideIds } }).select("ride tripStatus");
   const postedTripStatusMap = new Map(postedStatuses.map((s) => [String(s.ride), s.tripStatus]));
 
-  const posted = postedRides.map((r) => {
+  const postedVRList = await VehicleRide.find({ ride: { $in: postedRideIds } });
+  const postedVRMap = new Map(postedVRList.map((vr) => [String(vr.ride), vr]));
+
+  const posted = postedRides
+    .filter((r) => {
+      const tripStatus = postedTripStatusMap.get(String(r._id)) || "upcoming";
+      return r.status !== "completed" && tripStatus !== "completed";
+    })
+    .map((r) => {
     const requests = requestsByRide.get(String(r._id)) || [];
     const accepted = requests
       .filter((b) => b.status === "accepted")
       .reduce((sum, b) => sum + (b.seats || 1), 0);
+    const vr = postedVRMap.get(String(r._id));
+    const totalSeats = vr?.allocatedSeats || r.seats;
     return {
       _id: r._id,
       poster: r.poster,
@@ -229,8 +339,8 @@ const getMyRides = asyncHandler(async (req, res) => {
       dropoffLat: r.dropoffLat,
       dropoffLng: r.dropoffLng,
       departureTime: r.departureTime,
-      seats: r.seats,
-      seatsLeft: Math.max(0, r.seats - accepted),
+      seats: totalSeats,
+      seatsLeft: Math.max(0, totalSeats - accepted),
       tripStatus: postedTripStatusMap.get(String(r._id)) || "upcoming",
       charge: r.charge || 0,
       chargePerSeat: r.charge ? seatCharge(r.charge) : 0,
@@ -282,11 +392,9 @@ const getMyRides = asyncHandler(async (req, res) => {
     .populate({ path: "ride", populate: { path: "poster", select: publicPosterSelect } })
     .sort({ createdAt: -1 });
 
-  // Get ratings for poster drivers
   const requestedPosterIds = requested.map((b) => b.ride?.poster?._id).filter(Boolean);
   const requestedRatingMap = await getRatingsForDrivers(requestedPosterIds);
 
-  // Calculate booked seats (accepted) for requested rides to determine remaining seats
   const requestedRideIds = requested.map((b) => b.ride?._id).filter(Boolean);
   const requestedStatuses = await RideStatus.find({ ride: { $in: requestedRideIds } }).select("ride tripStatus");
   const requestedTripStatusMap = new Map(requestedStatuses.map((s) => [String(s.ride), s.tripStatus]));
@@ -318,12 +426,18 @@ const getMyRides = asyncHandler(async (req, res) => {
     }
   }
 
+  const reqRideIds = requested.map((b) => b.ride?._id).filter(Boolean);
+  const reqVRList = await VehicleRide.find({ ride: { $in: reqRideIds } });
+  const reqVRMap = new Map(reqVRList.map((vr) => [String(vr.ride), vr]));
+
   const requestedData = requested
     .map((b) => {
       const payment = paymentByRide.get(String(b.ride ? b.ride._id : ""));
       const posterRating = b.ride?.poster ? requestedRatingMap.get(String(b.ride.poster._id)) : null;
       const acceptedCount = acceptedSeatsByRequestedRide.get(String(b.ride ? b.ride._id : "")) || 0;
-      const seatsLeft = Math.max(0, (b.ride ? b.ride.seats : 0) - acceptedCount);
+      const vr = b.ride ? reqVRMap.get(String(b.ride._id)) : null;
+      const totalSeats = vr?.allocatedSeats || (b.ride ? b.ride.seats : 0);
+      const seatsLeft = Math.max(0, totalSeats - acceptedCount);
       const tripStatus = b.ride ? (requestedTripStatusMap.get(String(b.ride._id)) || "upcoming") : "upcoming";
 
       return {
@@ -368,7 +482,7 @@ const getMyRides = asyncHandler(async (req, res) => {
               dropoffLat: b.ride.dropoffLat,
               dropoffLng: b.ride.dropoffLng,
               departureTime: b.ride.departureTime,
-              seats: b.ride.seats,
+              seats: totalSeats,
               seatsLeft: seatsLeft,
               tripStatus,
               charge: b.ride.charge || 0,
@@ -383,16 +497,26 @@ const getMyRides = asyncHandler(async (req, res) => {
     })
     .filter((b) => {
       if (!b.ride) return false;
-      // Completed rides: only keep in active dashboard if there's a pending payment action.
-      // Otherwise they belong in Ride History / RideStatusTracker (handled separately by groupmate's feature).
-      if (b.ride.status === "completed") {
-        // Keep if payment is still pending action (unpaid, partial, or refund in progress)
-        if (!b.payment) return false; // free ride completed → hide
-        const terminalPaymentStatuses = ["PAID", "REFUNDED", "CANCELLED"];
-        if (terminalPaymentStatuses.includes(b.payment.status)) return false;
-        return true; // still has payment pending → keep visible
+      const isTripCompleted =
+        b.ride.status === "completed" ||
+        b.ride.tripStatus === "completed";
+
+      if (isTripCompleted) {
+        const isPaidOrSettled =
+          !b.ride.charge ||
+          b.ride.charge <= 0 ||
+          !b.payment ||
+          b.payment.status === "PAID" ||
+          b.payment.status === "REFUNDED" ||
+          b.payment.status === "CANCELLED" ||
+          b.paymentStatus === "SETTLED" ||
+          (b.payment.amountPaid > 0 && (!b.payment.remainingAmount || b.payment.remainingAmount <= 0));
+
+        if (isPaidOrSettled) return false;
+
+        return true;
       }
-      // If ride or booking is cancelled/declined, only show if a refund action is actively pending
+
       if (b.ride.status === "cancelled" || b.status === "cancelled" || b.status === "declined") {
         return b.payment && b.payment.status === "REFUND_REQUESTED";
       }
@@ -402,9 +526,6 @@ const getMyRides = asyncHandler(async (req, res) => {
   res.json({ success: true, data: { posted, requested: requestedData } });
 });
 
-/**
- * Passenger requests 1 or more seats on a ride offer.
- */
 const requestSeat = asyncHandler(async (req, res) => {
   if (!mongoose.isValidObjectId(req.params.rideId)) {
     return res.status(400).json({ success: false, message: "Invalid ride id" });
@@ -412,66 +533,123 @@ const requestSeat = asyncHandler(async (req, res) => {
   const me = await findMe(req);
   if (!me) return res.status(404).json({ success: false, message: "Profile not found" });
 
-  const seatCount =
-    req.body.seats === undefined || req.body.seats === null || req.body.seats === ""
-      ? 1
-      : Number(req.body.seats);
-  if (!Number.isInteger(seatCount) || seatCount < 1 || seatCount > 6) {
-    return res.status(400).json({ success: false, message: "Seats must be a whole number between 1 and 6" });
+  const riderKey = String(me._id);
+  if (pendingSeatRequests.has(riderKey)) {
+    return res.status(409).json({ success: false, message: "A seat request is already being processed. Please wait a moment." });
   }
+  pendingSeatRequests.add(riderKey);
 
-  const ride = await Ride.findById(req.params.rideId);
-  if (!ride) return res.status(404).json({ success: false, message: "Ride not found" });
-  if (ride.status !== "open") {
-    return res.status(400).json({ success: false, message: "This ride is no longer open" });
-  }
-
-  // Once driver starts the ride (ongoing/completed), no user can request a seat for that ride
-  const rideStatus = await RideStatus.findOne({ ride: ride._id });
-  if (rideStatus && rideStatus.tripStatus !== "upcoming") {
-    return res.status(400).json({
-      success: false,
-      message: "This ride has already started and is no longer accepting new seat requests",
-    });
-  }
-
-  if (String(ride.poster) === String(me._id)) {
-    return res.status(400).json({ success: false, message: "You cannot request a seat on your own ride" });
-  }
-
-  const bookedAgg = await Booking.aggregate([
-    { $match: { ride: ride._id, status: "accepted" } },
-    { $group: { _id: null, count: { $sum: "$seats" } } },
-  ]);
-  const booked = bookedAgg[0] ? bookedAgg[0].count : 0;
-  if (booked + seatCount > ride.seats) {
-    return res.status(400).json({ success: false, message: "Not enough seats left on this ride" });
-  }
-
-  const existing = await Booking.findOne({ ride: ride._id, rider: me._id });
-  if (existing) {
-    if (existing.status === "cancelled" || existing.status === "declined") {
-      existing.status = "pending";
-      existing.seats = seatCount;
-      existing.paymentStatus = "PENDING";
-      existing.settledBy = null;
-      existing.settledByUserId = null;
-      existing.settledAt = null;
-      existing.settledManually = false;
-      existing.cancelReason = null;
-      await existing.save();
-      return res.status(201).json({ success: true, data: existing });
+  try {
+    const seatCount =
+      req.body.seats === undefined || req.body.seats === null || req.body.seats === ""
+        ? 1
+        : Number(req.body.seats);
+    if (!Number.isInteger(seatCount) || seatCount < 1 || seatCount > 8) {
+      return res.status(400).json({ success: false, message: "Seats must be a whole number between 1 and 8" });
     }
-    return res.status(409).json({ success: false, message: "You already requested a seat on this ride" });
-  }
 
-  const booking = await Booking.create({ ride: ride._id, rider: me._id, seats: seatCount });
-  res.status(201).json({ success: true, data: booking });
+    const ride = await Ride.findById(req.params.rideId);
+    if (!ride) return res.status(404).json({ success: false, message: "Ride not found" });
+    if (ride.status !== "open") {
+      return res.status(400).json({ success: false, message: "This ride is no longer open" });
+    }
+
+    const rideStatus = await RideStatus.findOne({ ride: ride._id });
+    if (rideStatus && rideStatus.tripStatus !== "upcoming") {
+      return res.status(400).json({
+        success: false,
+        message: "This ride has already started and is no longer accepting new seat requests",
+      });
+    }
+
+    if (String(ride.poster) === String(me._id)) {
+      return res.status(400).json({ success: false, message: "You cannot request a seat on your own ride" });
+    }
+
+    const bookedAgg = await Booking.aggregate([
+      { $match: { ride: ride._id, status: "accepted" } },
+      { $group: { _id: null, count: { $sum: "$seats" } } },
+    ]);
+    const booked = bookedAgg[0] ? bookedAgg[0].count : 0;
+    const vehicleRide = await VehicleRide.findOne({ ride: ride._id });
+    const effectiveTotalSeats = Math.max(ride.seats, vehicleRide?.allocatedSeats || 0);
+    if (ride.seats < effectiveTotalSeats) {
+      ride.seats = effectiveTotalSeats;
+      await ride.save();
+    }
+    if (booked + seatCount > effectiveTotalSeats) {
+      return res.status(400).json({ success: false, message: "Not enough seats left on this ride" });
+    }
+
+    const activeBookingInfo = await findActiveBookingForRider(me._id);
+    if (activeBookingInfo && String(activeBookingInfo.ride._id) !== String(ride._id)) {
+      if (activeBookingInfo.isDriver) {
+        return res.status(400).json({
+          success: false,
+          message: `You are currently the driver of an active ride from ${activeBookingInfo.ride.pickup} to ${activeBookingInfo.ride.dropoff}. You cannot book another ride until your ride is completed or cancelled.`,
+          activeRide: {
+            _id: activeBookingInfo.ride._id,
+            pickup: activeBookingInfo.ride.pickup,
+            dropoff: activeBookingInfo.ride.dropoff,
+            status: "accepted",
+            tripStatus: activeBookingInfo.tripStatus,
+          },
+        });
+      }
+
+      if (activeBookingInfo.booking.status === "accepted") {
+        return res.status(400).json({
+          success: false,
+          message: `You already have an active booked ride from ${activeBookingInfo.ride.pickup} to ${activeBookingInfo.ride.dropoff}. You cannot book another ride until your current ride is completed.`,
+          activeRide: {
+            _id: activeBookingInfo.ride._id,
+            pickup: activeBookingInfo.ride.pickup,
+            dropoff: activeBookingInfo.ride.dropoff,
+            status: activeBookingInfo.booking.status,
+            tripStatus: activeBookingInfo.tripStatus,
+          },
+        });
+      }
+
+      if (activeBookingInfo.booking.status === "pending") {
+        return res.status(400).json({
+          success: false,
+          message: `You already have a pending seat request for a ride from ${activeBookingInfo.ride.pickup} to ${activeBookingInfo.ride.dropoff}. Please cancel that request before booking another ride.`,
+          activeRide: {
+            _id: activeBookingInfo.ride._id,
+            pickup: activeBookingInfo.ride.pickup,
+            dropoff: activeBookingInfo.ride.dropoff,
+            status: activeBookingInfo.booking.status,
+            tripStatus: activeBookingInfo.tripStatus,
+          },
+        });
+      }
+    }
+
+    const existing = await Booking.findOne({ ride: ride._id, rider: me._id });
+    if (existing) {
+      if (existing.status === "cancelled" || existing.status === "declined") {
+        existing.status = "pending";
+        existing.seats = seatCount;
+        existing.paymentStatus = "PENDING";
+        existing.settledBy = null;
+        existing.settledByUserId = null;
+        existing.settledAt = null;
+        existing.settledManually = false;
+        existing.cancelReason = null;
+        await existing.save();
+        return res.status(201).json({ success: true, data: existing });
+      }
+      return res.status(409).json({ success: false, message: "You already requested a seat on this ride" });
+    }
+
+    const booking = await Booking.create({ ride: ride._id, rider: me._id, seats: seatCount });
+    res.status(201).json({ success: true, data: booking });
+  } finally {
+    pendingSeatRequests.delete(riderKey);
+  }
 });
 
-/**
- * Driver responds to a passenger's seat request (accept or decline).
- */
 const respondToRequest = asyncHandler(async (req, res) => {
   if (!mongoose.isValidObjectId(req.params.rideId) || !mongoose.isValidObjectId(req.params.requestId)) {
     return res.status(400).json({ success: false, message: "Invalid id" });
@@ -503,8 +681,26 @@ const respondToRequest = asyncHandler(async (req, res) => {
       { $group: { _id: null, count: { $sum: "$seats" } } },
     ]);
     const booked = bookedAgg[0] ? bookedAgg[0].count : 0;
-    if (booked + (booking.seats || 1) > ride.seats) {
+    const vehicleRide = await VehicleRide.findOne({ ride: ride._id });
+    const effectiveTotalSeats = Math.max(ride.seats, vehicleRide?.allocatedSeats || 0);
+    if (ride.seats < effectiveTotalSeats) {
+      ride.seats = effectiveTotalSeats;
+      await ride.save();
+    }
+    if (booked + (booking.seats || 1) > effectiveTotalSeats) {
       return res.status(400).json({ success: false, message: "Not enough seats left on this ride" });
+    }
+
+    const activeBooking = await findActiveBookingForRider(booking.rider);
+    if (
+      activeBooking &&
+      String(activeBooking.ride._id) !== String(ride._id) &&
+      activeBooking.booking.status === "accepted"
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: `This rider is already confirmed on another active ride (from ${activeBooking.ride.pickup} to ${activeBooking.ride.dropoff}).`,
+      });
     }
   }
 
@@ -514,65 +710,60 @@ const respondToRequest = asyncHandler(async (req, res) => {
     { new: true }
   );
 
-  if (decision === "accepted" && ride.charge > 0) {
-    const perRider = seatCharge(ride.charge);
-    const paymentAmount = roundMoney(perRider * (booking.seats || 1));
-    const existingPayment = await RidePayment.findOne({ ride: ride._id, payer: booking.rider });
-    if (existingPayment) {
-      if (TERMINAL_STATUSES.includes(existingPayment.status)) {
-        existingPayment.status = "PENDING";
-        existingPayment.paymentMethod = null;
-        existingPayment.manualStatus = null;
-        existingPayment.finalized = false;
-        existingPayment.finalizedBy = null;
-        existingPayment.finalizedAt = null;
-        existingPayment.refundRequestedBy = null;
-        existingPayment.refundRequestedAt = null;
-        existingPayment.refundConfirmedBy = null;
-        existingPayment.refundConfirmedAt = null;
-        existingPayment.cancelledAt = null;
-        existingPayment.seats = booking.seats || 1;
-        existingPayment.originalAmount = paymentAmount;
-        existingPayment.amountPaid = 0;
-        existingPayment.remainingAmount = paymentAmount;
-        existingPayment.lateFeePaid = 0;
-        existingPayment.dueDate = null;
-        existingPayment.lastPaymentDate = null;
-        existingPayment.bkashPaymentID = null;
-        await refreshPayment(existingPayment);
-      }
-    } else {
-      const payment = await RidePayment.create({
-        ride: ride._id,
-        payer: booking.rider,
-        receiver: ride.poster,
-        seats: booking.seats || 1,
-        originalAmount: paymentAmount,
-        amountPaid: 0,
-        remainingAmount: paymentAmount,
-        dueDate: null,
-      });
-      await refreshPayment(payment);
-    }
+  if (decision === "accepted") {
+    await Booking.updateMany(
+      { rider: booking.rider, _id: { $ne: booking._id }, status: "pending" },
+      { $set: { status: "cancelled", cancelReason: "Auto-cancelled: rider confirmed on another ride" } }
+    );
   }
 
-  notifyUser(booking.rider, {
-    type: decision === "accepted" ? "REQUEST_ACCEPTED" : "REQUEST_DECLINED",
-    rideId: ride._id,
-    actorName: me.name,
-    decision,
-    amount: ride.charge ? roundMoney(seatCharge(ride.charge) * (booking.seats || 1)) : 0,
-    ride: { _id: ride._id, pickup: ride.pickup, dropoff: ride.dropoff },
-  });
+  if (decision === "accepted" && ride.charge > 0) {
+    await syncRidePaymentsWithCostSplit(ride._id);
+  }
+
+  const confirmedCount = await Booking.countDocuments({ ride: ride._id, status: "accepted" });
+  const dynamicShare = confirmedCount > 0 ? roundMoney(Number(ride.charge || 0) / confirmedCount) : Number(ride.charge || 0);
+
+  if (decision === "accepted") {
+    await createNotification({
+      recipientRole: "user",
+      recipient: booking.rider,
+      type: "REQUEST_ACCEPTED",
+      title: "Ride request accepted",
+      body: `Your ride request from ${ride.pickup} to ${ride.dropoff} has been accepted.`,
+      tone: "success",
+      referenceId: ride._id,
+      data: {
+        rideId: ride._id,
+        actorName: me.name,
+        decision,
+        amount: ride.charge ? dynamicShare : 0,
+        pickup: ride.pickup,
+        dropoff: ride.dropoff,
+      },
+    });
+  } else {
+    await createNotification({
+      recipientRole: "user",
+      recipient: booking.rider,
+      type: "REQUEST_DECLINED",
+      title: "Seat Request Declined",
+      body: `${me.name} declined your seat request.`,
+      tone: "warn",
+      referenceId: ride._id,
+      data: {
+        rideId: ride._id,
+        actorName: me.name,
+        decision,
+        pickup: ride.pickup,
+        dropoff: ride.dropoff,
+      },
+    });
+  }
 
   res.json({ success: true, data: updated });
 });
 
-/**
- * Passenger cancels their seat request.
- * - If unpaid or free: cancels immediately. If accepted > 15m ago, calculates late fine.
- * - If already paid: marks booking cancelled and requests refund from driver.
- */
 const cancelRequest = asyncHandler(async (req, res) => {
   if (!mongoose.isValidObjectId(req.params.rideId) || !mongoose.isValidObjectId(req.params.requestId)) {
     return res.status(400).json({ success: false, message: "Invalid id" });
@@ -593,10 +784,11 @@ const cancelRequest = asyncHandler(async (req, res) => {
     return res.status(400).json({ success: false, message: "Only an active or declined request can be cancelled" });
   }
 
-  const { reason } = req.body || {};
+  const previousStatus = booking.status;
+
+  const { reason, refundAlreadyReceived } = req.body || {};
   const reasonTrimmed = reason ? String(reason).trim() : null;
 
-  // Check if passenger had paid
   let payment = null;
   if (ride.charge > 0) {
     payment = await RidePayment.findOne({ ride: ride._id, payer: booking.rider });
@@ -614,20 +806,113 @@ const cancelRequest = asyncHandler(async (req, res) => {
 
   const reasonText = reasonTrimmed || (hasPaid ? "Cancelled by passenger" : null);
 
-  // Compute late passenger cancellation fine if accepted > 15 min ago
   const fine = booking.status === "accepted" ? computePassengerCancelFine(booking.acceptedAt) : 0;
 
+  const notifyDriverOfCancellation = async () => {
+    if (String(ride.poster) === String(me._id)) return;
+    if (previousStatus === "accepted") {
+      await createNotification({
+        recipientRole: "user",
+        recipient: ride.poster,
+        type: "PASSENGER_CANCELLED",
+        title: "Passenger cancelled ride",
+        body: `${me.name} cancelled their seat on the ride from ${ride.pickup} to ${ride.dropoff}.`,
+        tone: "warn",
+        referenceId: ride._id,
+        data: {
+          rideId: ride._id,
+          actorName: me.name,
+          reason: reasonText,
+          pickup: ride.pickup,
+          dropoff: ride.dropoff,
+        },
+      });
+    } else if (previousStatus === "pending") {
+      await createNotification({
+        recipientRole: "user",
+        recipient: ride.poster,
+        type: "REQUEST_WITHDRAWN",
+        title: "Ride request withdrawn",
+        body: `${me.name} withdrew their seat request for the ride from ${ride.pickup} to ${ride.dropoff}.`,
+        tone: "info",
+        referenceId: ride._id,
+        data: {
+          rideId: ride._id,
+          actorName: me.name,
+          pickup: ride.pickup,
+          dropoff: ride.dropoff,
+        },
+      });
+    }
+  };
+
   if (hasPaid) {
-    // Passenger paid: set payment status to REFUND_REQUESTED (ride remains until driver confirms refund)
+    if (refundAlreadyReceived === true) {
+      payment.status = "REFUNDED";
+      payment.refundConfirmedBy = me._id;
+      payment.refundConfirmedAt = new Date();
+      payment.remainingAmount = 0;
+      payment.totalOutstanding = 0;
+      payment.finalized = true;
+      payment.finalizedBy = me._id;
+      payment.finalizedAt = new Date();
+      await payment.save();
+
+      booking.status = "cancelled";
+      booking.cancelReason = reasonText ? `${reasonText} (Refund confirmed by passenger)` : "Refund confirmed by passenger";
+      await booking.save();
+
+      const Transaction = require("../models/Transaction");
+      const { generateTransactionId } = require("../utils/ridePaymentHelper");
+      try {
+        const refundTxnRef = `REFUND-${String(payment._id)}-${Date.now()}`;
+        await Transaction.create({
+          transactionId: await generateTransactionId(),
+          payer: payment.receiver,
+          receiver: payment.payer,
+          amount: roundMoney(payment.amountPaid),
+          ride: ride._id,
+          payment: payment._id,
+          paymentMethod: payment.paymentMethod || "MANUAL",
+          kind: "REFUND",
+          providerTransactionId: refundTxnRef,
+          status: "COMPLETED",
+        });
+      } catch (err) {
+        if (err.code !== 11000) console.error("Could not record refund transaction:", err.message);
+      }
+
+      notifyUser(ride.poster, {
+        type: "REFUND_CONFIRMED",
+        paymentId: payment._id,
+        actorName: me.name,
+        amount: roundMoney(payment.amountPaid),
+        method: payment.paymentMethod || "MANUAL",
+        ride: { _id: ride._id, pickup: ride.pickup, dropoff: ride.dropoff },
+      });
+
+      await syncRidePaymentsWithCostSplit(ride._id);
+
+      await notifyDriverOfCancellation();
+
+      return res.json({
+        success: true,
+        data: booking,
+        refundConfirmed: true,
+        fine,
+        message: "Ride cancelled and refund confirmed.",
+      });
+    }
+
     payment.status = "REFUND_REQUESTED";
     payment.refundRequestedBy = me._id;
     payment.refundRequestedAt = new Date();
     await payment.save();
 
+    booking.status = "cancelled";
     booking.cancelReason = reasonText;
     await booking.save();
 
-    // Notify driver about the cancellation and refund request
     notifyUser(ride.poster, {
       type: "REFUND_REQUESTED",
       paymentId: payment._id,
@@ -636,6 +921,10 @@ const cancelRequest = asyncHandler(async (req, res) => {
       method: payment.paymentMethod,
       ride: { _id: ride._id, pickup: ride.pickup, dropoff: ride.dropoff },
     });
+
+    await syncRidePaymentsWithCostSplit(ride._id);
+
+    await notifyDriverOfCancellation();
 
     return res.json({
       success: true,
@@ -646,10 +935,11 @@ const cancelRequest = asyncHandler(async (req, res) => {
     });
   }
 
-  // Unpaid or free ride: cancel immediately
   booking.status = "cancelled";
   booking.cancelReason = reasonText;
   await booking.save();
+
+  await syncRidePaymentsWithCostSplit(ride._id);
 
   if (payment && !TERMINAL_STATUSES.includes(payment.status)) {
     payment.status = "CANCELLED";
@@ -660,7 +950,6 @@ const cancelRequest = asyncHandler(async (req, res) => {
     await payment.save();
   }
 
-  // If late cancellation fine applies, create fine due against passenger
   if (fine > 0) {
     await RidePayment.create({
       payer: me._id,
@@ -676,6 +965,8 @@ const cancelRequest = asyncHandler(async (req, res) => {
     });
   }
 
+  await notifyDriverOfCancellation();
+
   res.json({
     success: true,
     data: booking,
@@ -687,13 +978,6 @@ const cancelRequest = asyncHandler(async (req, res) => {
   });
 });
 
-/**
- * Driver cancels the posted ride.
- * - Records cancellation reason.
- * - If passengers have paid: initiates refund (bKash with TrxID or Manual) and sets status to REFUND_REQUESTED.
- * - If unpaid or free: cancels immediately.
- * - Computes late driver cancellation fine if accepted > 15m ago.
- */
 const cancelRide = asyncHandler(async (req, res) => {
   if (!mongoose.isValidObjectId(req.params.rideId)) {
     return res.status(400).json({ success: false, message: "Invalid ride id" });
@@ -714,6 +998,11 @@ const cancelRide = asyncHandler(async (req, res) => {
   const { cancelReason, reason, refundMethod, refundTransactionId } = req.body || {};
   const reasonText = (cancelReason || reason ? String(cancelReason || reason).trim() : "") || "Ride cancelled by driver";
 
+  const affectedBookings = await Booking.find({
+    ride: ride._id,
+    status: { $in: ["accepted", "pending"] },
+  });
+
   const payments = await RidePayment.find({ ride: ride._id });
   for (const payment of payments) {
     await refreshPayment(payment);
@@ -723,7 +1012,6 @@ const cancelRide = asyncHandler(async (req, res) => {
     (p) => roundMoney((p.amountPaid || 0) + (p.lateFeePaid || 0)) > 0 && !["REFUNDED", "CANCELLED"].includes(p.status)
   );
 
-  // Compute late driver cancellation fine (15-min free window, 30 Tk per 10 min thereafter)
   const earliestAccepted = await Booking.findOne({ ride: ride._id, acceptedAt: { $ne: null } })
     .sort({ acceptedAt: 1 })
     .select("acceptedAt");
@@ -732,13 +1020,11 @@ const cancelRide = asyncHandler(async (req, res) => {
   if (paidPayments.length > 0) {
     const trimmedReason = (cancelReason || reason ? String(cancelReason || reason).trim() : "") || "Ride cancelled by driver";
 
-    // If passengers have paid, set ride to pending_cancellation until passengers confirm refund
     ride.status = "pending_cancellation";
     ride.cancelReason = trimmedReason;
     ride.cancellationFine = cancellationFine;
     await ride.save();
 
-    // Process refunds for paid passengers
     for (const payment of paidPayments) {
       payment.status = "REFUND_REQUESTED";
       payment.refundRequestedBy = me._id;
@@ -748,7 +1034,6 @@ const cancelRide = asyncHandler(async (req, res) => {
       payment.note = `Driver cancelled ride: ${reasonText}`;
       await payment.save();
 
-      // Notify passenger with cancellation reason and refund initiation
       notifyUser(payment.payer, {
         type: "DRIVER_CANCELLED_REFUND_INITIATED",
         paymentId: payment._id,
@@ -761,20 +1046,17 @@ const cancelRide = asyncHandler(async (req, res) => {
       });
     }
   } else {
-    // No paid passengers: cancel immediately
     ride.status = "cancelled";
     ride.cancelReason = reasonText;
     ride.cancellationFine = cancellationFine;
     await ride.save();
 
-    // Update all bookings to cancelled
     await Booking.updateMany(
       { ride: ride._id, status: { $in: ["pending", "accepted", "declined"] } },
       { $set: { status: "cancelled", cancelReason: reasonText } }
     );
   }
 
-  // Cancel any unpaid payment records
   const unpaidPayments = payments.filter(
     (p) => roundMoney((p.amountPaid || 0) + (p.lateFeePaid || 0)) === 0 && !TERMINAL_STATUSES.includes(p.status)
   );
@@ -787,7 +1069,6 @@ const cancelRide = asyncHandler(async (req, res) => {
     await p.save();
   }
 
-  // If driver cancellation fine applies, create fine dues owed to accepted passengers
   if (cancellationFine > 0) {
     const acceptedBookings = await Booking.find({ ride: ride._id, acceptedAt: { $ne: null } });
     for (const b of acceptedBookings) {
@@ -806,6 +1087,59 @@ const cancelRide = asyncHandler(async (req, res) => {
     }
   }
 
+  const acceptedRiderIds = new Set();
+  const pendingRiderIds = new Set();
+  for (const b of affectedBookings) {
+    const riderId = String(b.rider);
+    if (riderId === String(me._id)) continue;
+    if (b.status === "accepted") {
+      acceptedRiderIds.add(riderId);
+    } else if (b.status === "pending") {
+      pendingRiderIds.add(riderId);
+    }
+  }
+  for (const riderId of acceptedRiderIds) {
+    pendingRiderIds.delete(riderId);
+  }
+
+  for (const riderId of acceptedRiderIds) {
+    await createNotification({
+      recipientRole: "user",
+      recipient: riderId,
+      type: "RIDE_CANCELLED",
+      title: "Ride cancelled",
+      body: `The ride from ${ride.pickup} to ${ride.dropoff} was cancelled by ${me.name}.`,
+      tone: "danger",
+      referenceId: ride._id,
+      data: {
+        rideId: ride._id,
+        actorName: me.name,
+        reason: reasonText,
+        pickup: ride.pickup,
+        dropoff: ride.dropoff,
+      },
+    });
+  }
+
+  for (const riderId of pendingRiderIds) {
+    await createNotification({
+      recipientRole: "user",
+      recipient: riderId,
+      type: "RIDE_UNAVAILABLE",
+      title: "Ride no longer available",
+      body: `The ride from ${ride.pickup} to ${ride.dropoff} has been cancelled by the host.`,
+      tone: "warn",
+      referenceId: ride._id,
+      data: {
+        rideId: ride._id,
+        actorName: me.name,
+        reason: reasonText,
+        pickup: ride.pickup,
+        dropoff: ride.dropoff,
+      },
+    });
+  }
+
   res.json({
     success: true,
     data: ride,
@@ -817,9 +1151,6 @@ const cancelRide = asyncHandler(async (req, res) => {
   });
 });
 
-/**
- * Update ride details (seats, charge, time, notes).
- */
 const updateRide = asyncHandler(async (req, res) => {
   const { rideId } = req.params;
   if (!mongoose.isValidObjectId(rideId)) {
@@ -852,7 +1183,7 @@ const updateRide = asyncHandler(async (req, res) => {
     return res.status(400).json({ success: false, message: "Cannot edit a fully booked ride offer" });
   }
 
-  const { pickup, dropoff, departureTime, seats, notes, pickupLat, pickupLng, dropoffLat, dropoffLng, charge } = req.body || {};
+  const { pickup, dropoff, departureTime, seats, notes, pickupLat, pickupLng, dropoffLat, dropoffLng, charge, registrationNumber } = req.body || {};
 
   if (acceptedSeats > 0) {
     const isPickupChanged = pickup !== undefined && String(pickup).trim() !== ride.pickup;
@@ -906,8 +1237,8 @@ const updateRide = asyncHandler(async (req, res) => {
 
   if (seats !== undefined) {
     const seatCount = Number(seats);
-    if (!Number.isInteger(seatCount) || seatCount < 1 || seatCount > 6) {
-      return res.status(400).json({ success: false, message: "Seats must be a whole number between 1 and 6" });
+    if (!Number.isInteger(seatCount) || seatCount < 1 || seatCount > 8) {
+      return res.status(400).json({ success: false, message: "Seats must be a whole number between 1 and 8" });
     }
     if (seatCount < acceptedSeats) {
       return res.status(400).json({
@@ -916,6 +1247,7 @@ const updateRide = asyncHandler(async (req, res) => {
       });
     }
     ride.seats = seatCount;
+    await VehicleRide.updateOne({ ride: ride._id }, { $set: { allocatedSeats: seatCount } });
   }
 
   if (charge !== undefined && charge !== null && charge !== "") {
@@ -928,6 +1260,35 @@ const updateRide = asyncHandler(async (req, res) => {
 
   if (notes !== undefined) {
     ride.notes = notes ? String(notes).trim() : "";
+  }
+
+  if (registrationNumber !== undefined) {
+    const regTrimmed = String(registrationNumber || "").trim();
+    const regCheck = validateRegistrationPlate(regTrimmed);
+    if (!regCheck.valid) {
+      return res.status(400).json({
+        success: false,
+        message: regCheck.message || "Enter a valid Bangladesh vehicle registration number (e.g. Dhaka Metro-Ga 12-3456 or Gazipur-Ga 11-2456).",
+      });
+    }
+    await VehicleRide.updateOne({ ride: ride._id }, { $set: { registrationNumber: regCheck.canonical } });
+  }
+
+  const finalPickupLat = pickupLat !== undefined ? pickupLat : ride.pickupLat;
+  const finalPickupLng = pickupLng !== undefined ? pickupLng : ride.pickupLng;
+  const finalDropoffLat = dropoffLat !== undefined ? dropoffLat : ride.dropoffLat;
+  const finalDropoffLng = dropoffLng !== undefined ? dropoffLng : ride.dropoffLng;
+
+  if (finalPickupLat != null || finalPickupLng != null) {
+    if (!isInsideDhakaCoverage(finalPickupLat, finalPickupLng)) {
+      return res.status(400).json({ success: false, message: "Pickup and destination must be within the Campus Ride service area (Dhaka, Gazipur and Narayanganj)." });
+    }
+  }
+
+  if (finalDropoffLat != null || finalDropoffLng != null) {
+    if (!isInsideDhakaCoverage(finalDropoffLat, finalDropoffLng)) {
+      return res.status(400).json({ success: false, message: "Pickup and destination must be within the Campus Ride service area (Dhaka, Gazipur and Narayanganj)." });
+    }
   }
 
   if (pickupLat !== undefined) ride.pickupLat = pickupLat ?? null;
@@ -946,9 +1307,6 @@ const updateRide = asyncHandler(async (req, res) => {
   });
 });
 
-/**
- * Passenger edits the number of seats on their booking (before or after payment).
- */
 const updateBookingSeats = asyncHandler(async (req, res) => {
   const { rideId, requestId } = req.params;
   if (!mongoose.isValidObjectId(rideId) || !mongoose.isValidObjectId(requestId)) {
@@ -977,8 +1335,8 @@ const updateBookingSeats = asyncHandler(async (req, res) => {
   }
 
   const newSeats = Number(req.body.seats);
-  if (!Number.isInteger(newSeats) || newSeats < 1 || newSeats > 6) {
-    return res.status(400).json({ success: false, message: "Seats must be a whole number between 1 and 6" });
+  if (!Number.isInteger(newSeats) || newSeats < 1 || newSeats > 8) {
+    return res.status(400).json({ success: false, message: "Seats must be a whole number between 1 and 8" });
   }
 
   const currentSeats = booking.seats || 1;
@@ -986,20 +1344,25 @@ const updateBookingSeats = asyncHandler(async (req, res) => {
     return res.json({ success: true, data: booking });
   }
 
-  // Check seat capacity
+  const vehicleRide = await VehicleRide.findOne({ ride: ride._id });
+  const effectiveTotalSeats = Math.max(ride.seats, vehicleRide?.allocatedSeats || 0);
+  if (ride.seats < effectiveTotalSeats) {
+    ride.seats = effectiveTotalSeats;
+    await ride.save();
+  }
+
   const bookedAgg = await Booking.aggregate([
     { $match: { ride: ride._id, _id: { $ne: booking._id }, status: "accepted" } },
     { $group: { _id: null, count: { $sum: "$seats" } } },
   ]);
   const otherBooked = bookedAgg[0] ? bookedAgg[0].count : 0;
-  if (otherBooked + newSeats > ride.seats) {
+  if (otherBooked + newSeats > effectiveTotalSeats) {
     return res.status(400).json({ success: false, message: "Not enough seats available on this ride" });
   }
 
   booking.seats = newSeats;
   await booking.save();
 
-  // Adjust payment if charge applies
   let payment = await RidePayment.findOne({ ride: ride._id, payer: me._id });
   if (payment) {
     await refreshPayment(payment);
@@ -1007,7 +1370,6 @@ const updateBookingSeats = asyncHandler(async (req, res) => {
     const alreadyPaid = roundMoney(payment.amountPaid || 0);
     const paidSeatsCount = perRider > 0 ? Math.floor(alreadyPaid / perRider) : (payment.status === "PAID" ? currentSeats : 0);
 
-    // If passenger already paid, they cannot reduce seats below already paid seats
     if (paidSeatsCount > 0 && newSeats < paidSeatsCount) {
       return res.status(400).json({
         success: false,
@@ -1030,6 +1392,8 @@ const updateBookingSeats = asyncHandler(async (req, res) => {
     }
     await refreshPayment(payment);
   }
+
+  await syncRidePaymentsWithCostSplit(ride._id);
 
   notifyUser(ride.poster, {
     type: "SEATS_UPDATED",

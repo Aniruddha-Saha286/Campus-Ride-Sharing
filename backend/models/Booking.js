@@ -4,7 +4,7 @@ const bookingSchema = new mongoose.Schema(
   {
     ride: { type: mongoose.Schema.Types.ObjectId, ref: "Ride", required: true },
     rider: { type: mongoose.Schema.Types.ObjectId, ref: "Student", required: true },
-    seats: { type: Number, default: 1, min: 1, max: 6 },
+    seats: { type: Number, default: 1, min: 1, max: 8 },
     status: { type: String, enum: ["pending", "accepted", "declined", "cancelled"], default: "pending" },
     cancelReason: { type: String, default: null, trim: true, maxlength: 300 },
     acceptedAt: { type: Date, default: null },
